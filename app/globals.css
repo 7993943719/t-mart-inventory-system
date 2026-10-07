@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Inter, Arial, sans-serif;
+  background: #F5F7FB;
+  color: #172033;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  pointer-events: auto !important;
+  touch-action: manipulation;
+}
+
+button {
+  position: relative;
+  z-index: 30;
+  cursor: pointer;
+}
+
+.app-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  background: #F5F7FB;
+}
+
+.sidebar {
+  width: 272px;
+  min-width: 272px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  background: #FFFFFF;
+  border-right: 1px solid #E2E8F0;
+  flex-shrink: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-area {
+  flex: 1;
+  min-width: 0;
+  width: calc(100% - 272px);
+  min-height: 100vh;
+  background: #F5F7FB;
+  position: relative;
+  z-index: 10;
+}
+
+.top-header {
+  width: 100%;
+  height: 90px;
+  background: #FFFFFF;
+  border-bottom: 1px solid #E2E8F0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 100;
+  pointer-events: auto;
+}
+
+.page-content {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 30px 34px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100dvh;
+    background: #FFFFFF;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    pointer-events: none;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .main-area {
+    width: 100%;
+    min-width: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .top-header {
+    height: 70px;
+    padding: 0 16px;
+    position: relative;
+    z-index: 100;
+  }
+
+  .page-content {
+    padding: 20px 16px;
+    position: relative;
+    z-index: 20;
+  }
+
+  .hamburger-btn {
+    display: flex !important;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

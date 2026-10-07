@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TWEB</string>
+    <string name="title_activity_main">TWEB</string>
+    <string name="package_name">com.tmart.twebapp</string>
+    <string name="custom_url_scheme">com.tmart.twebapp</string>
+</resources>

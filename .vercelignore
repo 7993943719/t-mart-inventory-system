@@ -1,0 +1,6 @@
+android/
+.next/
+node_modules/
+.git/
+.idea/
+.vercel/
