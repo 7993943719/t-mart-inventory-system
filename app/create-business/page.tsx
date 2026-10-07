@@ -19,6 +19,7 @@ export default function CreateBusinessPage({
   searchParams?: { error?: string; message?: string };
 }) {
   const [loading, setLoading] = useState(false);
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     const formData = new FormData(e.currentTarget);
@@ -46,7 +47,7 @@ export default function CreateBusinessPage({
 
         <div className="space-y-1.5 pt-4">
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Welcome to TWEB 👋</h2>
-          <p className="text-xs text-slate-500 font-medium">Set up your business to get started.</p>
+          <p className="text-xs text-slate-500 font-medium">Set up your business and choose your billing cycle. Includes 3 days free trial.</p>
         </div>
 
         {searchParams?.error && (
@@ -57,6 +58,8 @@ export default function CreateBusinessPage({
         )}
 
         <form action={createBusiness} onSubmit={handleSubmit} className="space-y-4">
+          <input type="hidden" name="billing_cycle" value={billingCycle} />
+
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Business Name *</label>
             <div className="relative">
@@ -85,6 +88,40 @@ export default function CreateBusinessPage({
             </select>
           </div>
 
+          {/* PLAN SELECTION */}
+          <div className="space-y-2 pt-2">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Select Billing Cycle (3-Day Free Trial)</label>
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                onClick={() => setBillingCycle("monthly")}
+                className={`p-4 rounded-2xl border-2 cursor-pointer transition space-y-1 ${
+                  billingCycle === "monthly" ? "border-blue-600 bg-blue-50/50 shadow-xs" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-black text-xs text-slate-900">Monthly</span>
+                  {billingCycle === "monthly" && <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px]">✓</span>}
+                </div>
+                <p className="text-sm font-black text-blue-600">₹450 <span className="text-[10px] text-slate-500 font-normal">/ month</span></p>
+                <p className="text-[10px] text-slate-400">3 days free trial</p>
+              </div>
+
+              <div
+                onClick={() => setBillingCycle("yearly")}
+                className={`p-4 rounded-2xl border-2 cursor-pointer transition space-y-1 ${
+                  billingCycle === "yearly" ? "border-purple-600 bg-purple-50/50 shadow-xs" : "border-slate-200 bg-white"
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-black text-xs text-slate-900">Yearly</span>
+                  {billingCycle === "yearly" && <span className="w-4 h-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[10px]">✓</span>}
+                </div>
+                <p className="text-sm font-black text-purple-600">₹5,000 <span className="text-[10px] text-slate-500 font-normal">/ year</span></p>
+                <p className="text-[10px] text-slate-400">3 days free trial</p>
+              </div>
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
@@ -92,11 +129,11 @@ export default function CreateBusinessPage({
           >
             {loading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Creating Business...
+                <Loader2 className="w-4 h-4 animate-spin" /> Creating Business & Starting Trial...
               </>
             ) : (
               <>
-                Create Business →
+                Start 3-Day Free Trial →
               </>
             )}
           </button>
@@ -104,7 +141,7 @@ export default function CreateBusinessPage({
 
         <div className="pt-2 text-center border-t border-slate-100">
           <p className="text-[11px] text-slate-400 font-medium">
-            Your business will start with a 3-day free trial.
+            Google Play Billing supported on Android.
           </p>
         </div>
       </div>
