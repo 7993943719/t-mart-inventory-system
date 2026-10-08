@@ -18,7 +18,8 @@ import {
   X,
   Printer,
   DollarSign,
-  ShieldAlert,
+  AlertTriangle,
+  Users,
 } from "lucide-react";
 
 interface Props {
@@ -40,7 +41,7 @@ export default function DashboardView({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Metrics state
+  // Real-time Metrics state
   const [todaysSalesTotal, setTodaysSalesTotal] = useState(0);
   const [todaysPurchasesTotal, setTodaysPurchasesTotal] = useState(0);
   const [todaysGrossProfit, setTodaysGrossProfit] = useState(0);
@@ -49,15 +50,12 @@ export default function DashboardView({
   const [totalProducts, setTotalProducts] = useState(0);
   const [lowStockCount, setLowStockCount] = useState(0);
 
-  // Detailed datasets for owner/admin reports
+  // Datasets
   const [allSales, setAllSales] = useState<any[]>([]);
   const [allSaleItems, setAllSaleItems] = useState<any[]>([]);
   const [allProducts, setAllProducts] = useState<any[]>([]);
-  const [allExpenses, setAllExpenses] = useState<any[]>([]);
-
-  // Daily profit filter: "today" | "yesterday" | "week" | "month" | "custom"
-  const [dailyFilter, setDailyFilter] = useState<"today" | "yesterday" | "week" | "month" | "custom">("today");
-  const [customDate, setCustomDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [recentSalesList, setRecentSalesList] = useState<any[]>([]);
+  const [lowStockList, setLowStockList] = useState<any[]>([]);
 
   // Bill Details Modal State
   const [viewBillModalOpen, setViewBillModalOpen] = useState(false);
@@ -89,6 +87,7 @@ export default function DashboardView({
         return s.business_id === businessId || s.tenant_id === businessId || s.user_id === user?.id;
       });
       setAllSales(filteredSales);
+      setRecentSalesList(filteredSales.slice(0, 5));
 
       // 2. Fetch Sale Items
       if (filteredSales.length > 0) {
@@ -98,6 +97,8 @@ export default function DashboardView({
           .select("*")
           .in("sale_id", saleIds);
         setAllSaleItems(itemsData || []);
+      } else {
+        setAllSaleItems([]);
       }
 
       // 3. Fetch Products
@@ -115,18 +116,13 @@ export default function DashboardView({
       setAllProducts(filteredProds);
       setTotalProducts(filteredProds.length);
 
-      const lowStockList = filteredProds.filter(
+      const lowStock = filteredProds.filter(
         (p) => Number(p.stock_quantity || 0) <= Number(p.minimum_stock || 10)
       );
-      setLowStockCount(lowStockList.length);
+      setLowStockList(lowStock.slice(0, 5));
+      setLowStockCount(lowStock.length);
 
-      // 4. Fetch Expenses
-      const { data: expData } = await supabase
-        .from("expenses")
-        .select("*");
-      setAllExpenses(expData || []);
-
-      // Compute Today's metrics
+      // Compute Today's Metrics
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
 
@@ -135,8 +131,8 @@ export default function DashboardView({
       setTodaysSalesTotal(todaySalesSum);
       setTodaysBillsCount(todaySales.length);
 
-      // Compute Today's Purchase Cost & Profit from sale items
-      if (isAdminOrOwner && todaySales.length > 0) {
+      // Compute Today's Purchases & Profit
+      if (todaySales.length > 0) {
         const todaySaleIds = new Set(todaySales.map((s) => s.id));
         const todayItems = (allSaleItems || []).filter((i) => todaySaleIds.has(i.sale_id));
 
@@ -150,7 +146,11 @@ export default function DashboardView({
         setTodaysPurchasesTotal(purCostToday);
         const gross = todaySalesSum - purCostToday;
         setTodaysGrossProfit(gross);
-        setTodaysNetProfit(gross); // Or gross minus today's expenses
+        setTodaysNetProfit(gross);
+      } else {
+        setTodaysPurchasesTotal(0);
+        setTodaysGrossProfit(0);
+        setTodaysNetProfit(0);
       }
     } catch (err: any) {
       console.error("Dashboard data load error:", err);
@@ -159,13 +159,13 @@ export default function DashboardView({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [supabase, businessId, isAdminOrOwner]);
+  }, [supabase, businessId]);
 
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  // Compute enriched sales with cost and profit for owner/admin
+  // Compute Enriched Sales for Owner/Admin
   const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
   const enrichedSales = allSales.map((sale) => {
@@ -187,12 +187,11 @@ export default function DashboardView({
     };
   });
 
-  // Today's bills for Owner/Admin
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const todaysEnrichedBills = enrichedSales.filter((s) => new Date(s.created_at) >= startOfToday);
 
-  // Product-wise purchase/sale report
+  // Product-wise Report
   const productSalesMap = new Map<string, { name: string; qty: number; sales: number; cost: number; profit: number }>();
   allSaleItems.forEach((item) => {
     const prod = productMap.get(item.product_id);
@@ -258,7 +257,7 @@ export default function DashboardView({
       role={role}
       pageTitle="Home"
     >
-      {/* 1. HEADER */}
+      {/* 1. HEADER BANNER */}
       <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20">
@@ -285,43 +284,48 @@ export default function DashboardView({
         </div>
       )}
 
-      {/* 2. QUICK ACTIONS */}
-      <section className="mb-8">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Quick Actions</h3>
-        </div>
-
+      {/* 2. COLORFUL QUICK ACTIONS */}
+      <section className="mb-8 space-y-3">
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Quick Actions</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <button
             onClick={() => go("/dashboard/billing")}
-            className="p-5 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-3xl shadow-lg shadow-blue-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-2 cursor-pointer min-h-[90px]"
+            className="p-5 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-3xl shadow-lg shadow-blue-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
           >
-            <Plus className="w-6 h-6 text-white" />
-            <span className="font-black text-xs">+ New Bill</span>
+            <div className="p-2.5 bg-white/20 rounded-2xl">
+              <Plus className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-black text-xs sm:text-sm">+ New Bill</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/products")}
-            className="p-5 bg-white hover:bg-slate-50 text-slate-900 rounded-3xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-2 cursor-pointer min-h-[90px]"
+            className="p-5 bg-gradient-to-br from-violet-600 to-purple-700 text-white rounded-3xl shadow-lg shadow-purple-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
           >
-            <Package className="w-6 h-6 text-indigo-600" />
-            <span className="font-extrabold text-xs">Products</span>
+            <div className="p-2.5 bg-white/20 rounded-2xl">
+              <Package className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-black text-xs sm:text-sm">Products</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/stock")}
-            className="p-5 bg-white hover:bg-slate-50 text-slate-900 rounded-3xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-2 cursor-pointer min-h-[90px]"
+            className="p-5 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-3xl shadow-lg shadow-emerald-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
           >
-            <Boxes className="w-6 h-6 text-emerald-600" />
-            <span className="font-extrabold text-xs">Stock</span>
+            <div className="p-2.5 bg-white/20 rounded-2xl">
+              <Boxes className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-black text-xs sm:text-sm">Stock</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/sales")}
-            className="p-5 bg-white hover:bg-slate-50 text-slate-900 rounded-3xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-2 cursor-pointer min-h-[90px]"
+            className="p-5 bg-gradient-to-br from-cyan-600 to-blue-700 text-white rounded-3xl shadow-lg shadow-cyan-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
           >
-            <ShoppingCart className="w-6 h-6 text-purple-600" />
-            <span className="font-extrabold text-xs">Bills</span>
+            <div className="p-2.5 bg-white/20 rounded-2xl">
+              <ShoppingCart className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-black text-xs sm:text-sm">Bills</span>
           </button>
         </div>
       </section>
@@ -329,25 +333,25 @@ export default function DashboardView({
       {/* 3. TODAY'S BUSINESS SUMMARY (Owner / Admin Only) */}
       {isAdminOrOwner && (
         <section className="mb-8 space-y-3">
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Today's Business Summary</h3>
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Today's Business Summary</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <div className="bg-white p-5 rounded-3xl border border-blue-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider">Today's Sales</p>
               <h3 className="text-xl sm:text-2xl font-black text-slate-900">₹{todaysSalesTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <div className="bg-white p-5 rounded-3xl border border-orange-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-orange-600 uppercase tracking-wider">Today's Purchases</p>
               <h3 className="text-xl sm:text-2xl font-black text-orange-600">₹{todaysPurchasesTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <div className="bg-white p-5 rounded-3xl border border-emerald-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Gross Profit</p>
               <h3 className="text-xl sm:text-2xl font-black text-emerald-600">₹{todaysGrossProfit.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
+            <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">Net Profit</p>
               <h3 className="text-xl sm:text-2xl font-black text-indigo-600">₹{todaysNetProfit.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-1 col-span-2 sm:col-span-1">
+            <div className="bg-white p-5 rounded-3xl border border-purple-100 shadow-xs space-y-1 col-span-2 sm:col-span-1">
               <p className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider">Today's Bills</p>
               <h3 className="text-xl sm:text-2xl font-black text-purple-600">{todaysBillsCount}</h3>
             </div>
@@ -355,16 +359,16 @@ export default function DashboardView({
         </section>
       )}
 
-      {/* 5. BILL-WISE PROFIT (Owner / Admin Only) */}
+      {/* 4. BILL-WISE PROFIT (Owner / Admin Only) */}
       {isAdminOrOwner && (
         <section className="mb-8 space-y-3">
           <div className="flex justify-between items-center">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Today's Bill-wise Profit</h3>
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Today's Bill-wise Profit</h3>
             <span className="text-xs font-bold text-slate-400">{todaysEnrichedBills.length} bills today</span>
           </div>
 
           {todaysEnrichedBills.length === 0 ? (
-            <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center text-xs text-slate-400">
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 text-center text-xs text-slate-400">
               No bills available for today.
             </div>
           ) : (
@@ -406,16 +410,16 @@ export default function DashboardView({
         </section>
       )}
 
-      {/* 6. PRODUCT PURCHASE-SALE REPORT (Owner / Admin Only) */}
+      {/* 5. PRODUCT PURCHASE-SALE REPORT (Owner / Admin Only) */}
       {isAdminOrOwner && (
         <section className="mb-8 space-y-3">
           <div className="flex justify-between items-center">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Product Purchase-Sale Report</h3>
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Product Purchase-Sale Report</h3>
             <span className="text-xs font-bold text-slate-400">{productReportList.length} products sold</span>
           </div>
 
           {productReportList.length === 0 ? (
-            <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center text-xs text-slate-400">
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 text-center text-xs text-slate-400">
               No product sales recorded yet.
             </div>
           ) : (
@@ -449,31 +453,105 @@ export default function DashboardView({
         </section>
       )}
 
-      {/* RECENT SALES / OVERVIEW FOR STAFF/BILLING */}
-      {!isAdminOrOwner && (
-        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4 mb-8">
+      {/* RECENT SALES & LOW STOCK ALERTS PANELS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* RECENT SALES */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
           <div className="flex justify-between items-center pb-2 border-b border-slate-100">
             <div>
-              <h3 className="text-base font-black text-slate-900">Today's Overview</h3>
-              <p className="text-xs text-slate-400">Activity summary for your shift</p>
+              <h3 className="text-base font-black text-slate-900">Recent Sales</h3>
+              <p className="text-xs text-slate-400 font-medium">Latest POS transactions</p>
             </div>
-            <span className="px-3 py-1 bg-blue-50 text-blue-700 font-extrabold text-xs rounded-full">
-              {todaysBillsCount} Bills Today
-            </span>
+
+            <button
+              onClick={() => go("/dashboard/sales")}
+              className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1"
+            >
+              View All <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-1">
-              <span className="text-[10px] font-extrabold text-blue-600 uppercase">Today's Sales</span>
-              <h3 className="text-2xl font-black text-blue-900">₹{todaysSalesTotal.toFixed(2)}</h3>
+          {loading ? (
+            <div className="p-8 text-center text-xs text-slate-400">Loading recent sales...</div>
+          ) : recentSalesList.length === 0 ? (
+            <div className="p-8 bg-slate-50 rounded-2xl border border-dashed text-center space-y-2">
+              <Receipt className="w-8 h-8 text-slate-300 mx-auto" />
+              <p className="text-xs font-bold text-slate-700">No sales recorded today</p>
             </div>
-            <div className="p-5 bg-purple-50/50 rounded-2xl border border-purple-100 space-y-1">
-              <span className="text-[10px] font-extrabold text-purple-600 uppercase">Bills Generated</span>
-              <h3 className="text-2xl font-black text-purple-900">{todaysBillsCount}</h3>
+          ) : (
+            <div className="space-y-2">
+              {recentSalesList.map((s) => (
+                <div
+                  key={s.id}
+                  onClick={() => go("/dashboard/sales")}
+                  className="p-3.5 bg-slate-50 hover:bg-blue-50/50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs transition cursor-pointer"
+                >
+                  <div>
+                    <span className="font-mono font-bold text-blue-600">{s.invoice_number || s.bill_no}</span>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {new Date(s.created_at).toLocaleDateString()} • {new Date(s.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="font-black text-emerald-600 block text-sm">₹{Number(s.total_amount ?? s.total ?? 0).toFixed(2)}</span>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-bold text-[9px] uppercase">
+                      {s.payment_method || "CASH"}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          )}
         </section>
-      )}
+
+        {/* LOW STOCK ALERTS */}
+        <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+            <div>
+              <h3 className="text-base font-black text-slate-900">Low Stock Alerts</h3>
+              <p className="text-xs text-slate-400 font-medium">Products requiring reorder</p>
+            </div>
+
+            <button
+              onClick={() => go("/dashboard/stock")}
+              className="px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1"
+            >
+              View Stock <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="p-8 text-center text-xs text-slate-400">Loading stock alerts...</div>
+          ) : lowStockList.length === 0 ? (
+            <div className="p-8 bg-slate-50 rounded-2xl border border-dashed text-center space-y-2">
+              <Boxes className="w-8 h-8 text-slate-300 mx-auto" />
+              <p className="text-xs font-bold text-slate-700">All products in stock</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {lowStockList.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => go("/dashboard/stock")}
+                  className="p-3.5 bg-slate-50 hover:bg-amber-50/50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs transition cursor-pointer"
+                >
+                  <div>
+                    <h4 className="font-extrabold text-slate-900">{p.name}</h4>
+                    <p className="text-[10px] text-slate-400">SKU: {p.barcode || "N/A"}</p>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full font-black text-[10px]">
+                      {p.stock_quantity || 0} {p.unit || "pcs"} left
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       {/* BILL DETAILS MODAL */}
       {viewBillModalOpen && selectedSale && (
