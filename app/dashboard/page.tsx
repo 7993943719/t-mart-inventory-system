@@ -32,12 +32,12 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
-  const userName = profile?.full_name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Admin";
+  const userName = profile?.full_name || user.user_metadata?.full_name || "Admin";
 
   return (
     <DashboardView
       businessId={business?.id || user.id}
-      businessName={business?.name || "T MART"}
+      businessName={business?.name || "TWEB"}
       userName={userName}
       role={membership.role || "Admin"}
     />

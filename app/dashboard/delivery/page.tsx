@@ -20,11 +20,18 @@ export default async function DeliveryPage() {
 
   const membership = memberships[0];
   const business = membership.businesses;
-  const profileName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Pavan";
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .single();
+
+  const profileName = profile?.full_name || user.user_metadata?.full_name || "Admin";
 
   return (
     <DashboardShell
-      businessName={business?.name || "T MART"}
+      businessName={business?.name || "TWEB"}
       userName={profileName}
       role={membership.role || "OWNER"}
       pageTitle="Delivery"

@@ -13,13 +13,11 @@ import {
   Package,
   Boxes,
   ShoppingCart,
-  Calendar,
+  UserCheck,
+  Truck,
   Eye,
   X,
-  Printer,
-  DollarSign,
-  AlertTriangle,
-  Users,
+  FileText,
 } from "lucide-react";
 
 interface Props {
@@ -261,10 +259,10 @@ export default function DashboardView({
       <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20">
-            TWEB Dashboard
+            TWEB SaaS
           </span>
           <h2 className="text-2xl sm:text-3xl font-black mt-2">Welcome, {userName} 👋</h2>
-          <p className="text-xs text-indigo-100 font-medium mt-1">Managing <strong className="text-white">{businessName}</strong> ({role.toUpperCase()})</p>
+          <p className="text-xs text-indigo-100 font-medium mt-1">Managing <strong className="text-white">{businessName}</strong></p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -284,48 +282,64 @@ export default function DashboardView({
         </div>
       )}
 
-      {/* 2. COLORFUL QUICK ACTIONS */}
+      {/* 2. MAIN QUICK ACTIONS (7 ACTIONS) */}
       <section className="mb-8 space-y-3">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Quick Actions</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Main Quick Actions</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
           <button
             onClick={() => go("/dashboard/billing")}
-            className="p-5 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-3xl shadow-lg shadow-blue-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
+            className="p-4 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl shadow-md shadow-blue-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
-            <div className="p-2.5 bg-white/20 rounded-2xl">
-              <Plus className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-black text-xs sm:text-sm">+ New Bill</span>
+            <Plus className="w-5 h-5 text-white" />
+            <span className="font-black text-xs">+ New Bill</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/products")}
-            className="p-5 bg-gradient-to-br from-violet-600 to-purple-700 text-white rounded-3xl shadow-lg shadow-purple-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
+            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
-            <div className="p-2.5 bg-white/20 rounded-2xl">
-              <Package className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-black text-xs sm:text-sm">Products</span>
+            <Package className="w-5 h-5 text-indigo-600" />
+            <span className="font-extrabold text-xs">Products</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/stock")}
-            className="p-5 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-3xl shadow-lg shadow-emerald-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
+            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
-            <div className="p-2.5 bg-white/20 rounded-2xl">
-              <Boxes className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-black text-xs sm:text-sm">Stock</span>
+            <Boxes className="w-5 h-5 text-emerald-600" />
+            <span className="font-extrabold text-xs">Stock</span>
           </button>
 
           <button
-            onClick={() => go("/dashboard/sales")}
-            className="p-5 bg-gradient-to-br from-cyan-600 to-blue-700 text-white rounded-3xl shadow-lg shadow-cyan-600/20 hover:scale-[1.02] transition flex flex-col items-start justify-center gap-2 cursor-pointer min-h-[100px]"
+            onClick={() => go("/dashboard/purchases")}
+            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
-            <div className="p-2.5 bg-white/20 rounded-2xl">
-              <ShoppingCart className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-black text-xs sm:text-sm">Bills</span>
+            <FileText className="w-5 h-5 text-orange-600" />
+            <span className="font-extrabold text-xs">Purchases</span>
+          </button>
+
+          <button
+            onClick={() => go("/dashboard/customers")}
+            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
+          >
+            <UserCheck className="w-5 h-5 text-blue-600" />
+            <span className="font-extrabold text-xs">Customers</span>
+          </button>
+
+          <button
+            onClick={() => go("/dashboard/purchases")}
+            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
+          >
+            <Truck className="w-5 h-5 text-teal-600" />
+            <span className="font-extrabold text-xs">Vendors</span>
+          </button>
+
+          <button
+            onClick={() => go("/dashboard/reports")}
+            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
+          >
+            <TrendingUp className="w-5 h-5 text-purple-600" />
+            <span className="font-extrabold text-xs">Reports</span>
           </button>
         </div>
       </section>
@@ -334,26 +348,34 @@ export default function DashboardView({
       {isAdminOrOwner && (
         <section className="mb-8 space-y-3">
           <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Today's Business Summary</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-            <div className="bg-white p-5 rounded-3xl border border-blue-100 shadow-xs space-y-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="bg-white p-4 rounded-3xl border border-blue-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider">Today's Sales</p>
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900">₹{todaysSalesTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900">₹{todaysSalesTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-orange-100 shadow-xs space-y-1">
+            <div className="bg-white p-4 rounded-3xl border border-orange-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-orange-600 uppercase tracking-wider">Today's Purchases</p>
-              <h3 className="text-xl sm:text-2xl font-black text-orange-600">₹{todaysPurchasesTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <h3 className="text-lg sm:text-xl font-black text-orange-600">₹{todaysPurchasesTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-emerald-100 shadow-xs space-y-1">
+            <div className="bg-white p-4 rounded-3xl border border-emerald-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Gross Profit</p>
-              <h3 className="text-xl sm:text-2xl font-black text-emerald-600">₹{todaysGrossProfit.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <h3 className="text-lg sm:text-xl font-black text-emerald-600">₹{todaysGrossProfit.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-indigo-100 shadow-xs space-y-1">
+            <div className="bg-white p-4 rounded-3xl border border-indigo-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">Net Profit</p>
-              <h3 className="text-xl sm:text-2xl font-black text-indigo-600">₹{todaysNetProfit.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <h3 className="text-lg sm:text-xl font-black text-indigo-600">₹{todaysNetProfit.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
-            <div className="bg-white p-5 rounded-3xl border border-purple-100 shadow-xs space-y-1 col-span-2 sm:col-span-1">
+            <div className="bg-white p-4 rounded-3xl border border-purple-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider">Today's Bills</p>
-              <h3 className="text-xl sm:text-2xl font-black text-purple-600">{todaysBillsCount}</h3>
+              <h3 className="text-lg sm:text-xl font-black text-purple-600">{todaysBillsCount}</h3>
+            </div>
+            <div className="bg-white p-4 rounded-3xl border border-cyan-100 shadow-xs space-y-1">
+              <p className="text-[10px] font-extrabold text-cyan-600 uppercase tracking-wider">Total Products</p>
+              <h3 className="text-lg sm:text-xl font-black text-cyan-600">{totalProducts}</h3>
+            </div>
+            <div className="bg-white p-4 rounded-3xl border border-amber-100 shadow-xs space-y-1">
+              <p className="text-[10px] font-extrabold text-amber-600 uppercase tracking-wider">Low Stock</p>
+              <h3 className="text-lg sm:text-xl font-black text-amber-600">{lowStockCount}</h3>
             </div>
           </div>
         </section>
@@ -405,49 +427,6 @@ export default function DashboardView({
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* 5. PRODUCT PURCHASE-SALE REPORT (Owner / Admin Only) */}
-      {isAdminOrOwner && (
-        <section className="mb-8 space-y-3">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Product Purchase-Sale Report</h3>
-            <span className="text-xs font-bold text-slate-400">{productReportList.length} products sold</span>
-          </div>
-
-          {productReportList.length === 0 ? (
-            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 text-center text-xs text-slate-400">
-              No product sales recorded yet.
-            </div>
-          ) : (
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-600">
-                  <thead className="bg-slate-50 text-[11px] text-slate-500 uppercase border-b border-slate-200">
-                    <tr>
-                      <th className="p-4">Product</th>
-                      <th className="p-4 text-center">Qty Sold</th>
-                      <th className="p-4 text-right text-blue-600">Sales Amount</th>
-                      <th className="p-4 text-right text-orange-600">Purchase Cost</th>
-                      <th className="p-4 text-right text-emerald-600">Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {productReportList.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50">
-                        <td className="p-4 font-extrabold text-slate-900">{item.name}</td>
-                        <td className="p-4 text-center font-bold text-slate-700">{item.qty}</td>
-                        <td className="p-4 text-right font-black text-blue-600">₹{item.sales.toFixed(2)}</td>
-                        <td className="p-4 text-right font-bold text-orange-600">₹{item.cost.toFixed(2)}</td>
-                        <td className="p-4 text-right font-black text-emerald-600">₹{item.profit.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           )}
         </section>
