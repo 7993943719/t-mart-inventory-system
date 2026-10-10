@@ -10,6 +10,11 @@ import {
   ReceiptText,
   Bell,
   Check,
+  AlertTriangle,
+  Trash2,
+  X,
+  Lock,
+  Loader2,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -48,6 +53,15 @@ export default function SettingsPage() {
   const [notifLowStock, setNotifLowStock] = useState(true);
   const [notifNewSale, setNotifNewSale] = useState(true);
   const [notifPurchase, setNotifPurchase] = useState(true);
+
+  // Delete Account & Business state (Owner only)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [confirmBusinessName, setConfirmBusinessName] = useState("");
+  const [confirmWord, setConfirmWord] = useState("");
+  const [deletingBusiness, setDeletingBusiness] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const isOwner = role && ["owner", "OWNER"].includes(role.toLowerCase());
 
   useEffect(() => {
     async function loadSettings() {
@@ -131,17 +145,72 @@ export default function SettingsPage() {
     }, 500);
   };
 
+  const handleDeleteAccountAndBusiness = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!business?.id || !business?.name) return;
+
+    if (confirmBusinessName.trim() !== business.name.trim()) {
+      setDeleteError("Entered business name does not match exact business name.");
+      return;
+    }
+
+    if (confirmWord.trim() !== "DELETE") {
+      setDeleteError("Please type DELETE in capital letters to confirm.");
+      return;
+    }
+
+    setDeletingBusiness(true);
+    setDeleteError("");
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Authentication session expired. Please log in again.");
+      }
+
+      // Call Supabase Edge Function delete-account-business using user's access token
+      const { data: resData, error: fnError } = await supabase.functions.invoke("delete-account-business", {
+        body: {
+          business_id: business.id,
+          business_name: business.name,
+          confirmation: "DELETE",
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (fnError) {
+        throw new Error(fnError.message || "Failed to delete account and business.");
+      }
+
+      if (resData && resData.success === false) {
+        throw new Error(resData.error || resData.message || "Deletion request denied by server.");
+      }
+
+      // Only sign out and redirect to login after server confirms deletion
+      await supabase.auth.signOut();
+      window.location.href = "/login?message=" + encodeURIComponent("Account and business permanently deleted.");
+    } catch (err: any) {
+      console.error("Delete business error:", err);
+      setDeleteError(err.message || "Deletion failed. Ensure financial retention rules allow account closure.");
+    } finally {
+      setDeletingBusiness(false);
+    }
+  };
+
   const settingsTabs = [
     { id: "profile", label: "Business Profile", icon: Building },
     { id: "permissions", label: "Users & Permissions", icon: Users },
     { id: "inventory", label: "Inventory", icon: Boxes },
     { id: "billing", label: "Billing", icon: ReceiptText },
     { id: "notifications", label: "Notifications", icon: Bell },
+    ...(isOwner ? [{ id: "danger", label: "Danger Zone", icon: Trash2 }] : []),
   ];
 
   return (
     <SharedDashboardLayout
-      businessName={business?.name || "T MART"}
+      businessName={business?.name || "TWEB"}
       userName={userName}
       role={role}
       pageTitle="Settings"
@@ -149,7 +218,7 @@ export default function SettingsPage() {
       {/* PAGE HEADER */}
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs">
         <h2 className="text-xl sm:text-2xl font-black text-slate-900">Settings</h2>
-        <p className="text-xs text-slate-500 font-medium mt-0.5">Manage your business and application settings.</p>
+        <p className="text-xs text-slate-500 font-medium mt-0.5">Manage your business profile, permissions, inventory and security.</p>
       </div>
 
       {errorMsg && (
@@ -173,17 +242,22 @@ export default function SettingsPage() {
             {settingsTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const isDanger = tab.id === "danger";
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-xs transition cursor-pointer ${
                     isActive
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-black"
-                      : "hover:bg-slate-50 text-slate-700"
+                      ? isDanger
+                        ? "bg-rose-600 text-white shadow-md shadow-rose-600/20 font-black"
+                        : "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-black"
+                      : isDanger
+                        ? "hover:bg-rose-50 text-rose-600"
+                        : "hover:bg-slate-50 text-slate-700"
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-blue-600"}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? "text-white" : isDanger ? "text-rose-600" : "text-blue-600"}`} />
                   <span>{tab.label}</span>
                 </button>
               );
@@ -232,7 +306,7 @@ export default function SettingsPage() {
                       value={businessEmail}
                       onChange={(e) => setBusinessEmail(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-semibold outline-none focus:border-blue-600"
-                      placeholder="store@tmart.com"
+                      placeholder="store@tweb.app"
                     />
                   </div>
                 </div>
@@ -254,7 +328,7 @@ export default function SettingsPage() {
                     type="text"
                     value={gstNumber}
                     onChange={(e) => setGstNumber(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-semibold outline-none focus:border-blue-600"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-semibold outline-none focus:border-blue-600 font-mono"
                     placeholder="22AAAAA0000A1Z5"
                   />
                 </div>
@@ -263,7 +337,7 @@ export default function SettingsPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5"
+                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5 min-h-[44px]"
                   >
                     <Check className="w-4 h-4" /> Save Changes
                   </button>
@@ -372,7 +446,7 @@ export default function SettingsPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5"
+                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5 min-h-[44px]"
                   >
                     <Check className="w-4 h-4" /> Save Changes
                   </button>
@@ -397,7 +471,7 @@ export default function SettingsPage() {
                       type="text"
                       value={invoicePrefix}
                       onChange={(e) => setInvoicePrefix(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-semibold outline-none focus:border-blue-600"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-semibold outline-none focus:border-blue-600 font-mono"
                     />
                   </div>
                   <div>
@@ -406,7 +480,7 @@ export default function SettingsPage() {
                       type="text"
                       value={nextInvoiceNo}
                       onChange={(e) => setNextInvoiceNo(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-semibold outline-none focus:border-blue-600"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs font-semibold outline-none focus:border-blue-600 font-mono"
                     />
                   </div>
                 </div>
@@ -453,7 +527,7 @@ export default function SettingsPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5"
+                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5 min-h-[44px]"
                   >
                     <Check className="w-4 h-4" /> Save Changes
                   </button>
@@ -462,19 +536,19 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* 5. NOTIFICATION SETTINGS */}
+          {/* 5. NOTIFICATIONS SETTINGS */}
           {activeTab === "notifications" && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">Notification Settings</h3>
-                <p className="text-xs text-slate-400">Configure alert preferences.</p>
+                <h3 className="text-base font-extrabold text-slate-900">Notifications</h3>
+                <p className="text-xs text-slate-400">Manage real-time alert preferences.</p>
               </div>
 
               <form onSubmit={handleGenericSave} className="space-y-4">
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border">
                   <div>
-                    <h4 className="font-extrabold text-xs text-slate-900">Low Stock Notifications</h4>
-                    <p className="text-[11px] text-slate-400">Receive alerts when inventory runs low.</p>
+                    <h4 className="font-extrabold text-xs text-slate-900">Low Stock Alerts</h4>
+                    <p className="text-[11px] text-slate-400">Notify when items reach minimum stock levels.</p>
                   </div>
                   <input
                     type="checkbox"
@@ -487,7 +561,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border">
                   <div>
                     <h4 className="font-extrabold text-xs text-slate-900">New Sale Notifications</h4>
-                    <p className="text-[11px] text-slate-400">Get notified when a new bill is completed.</p>
+                    <p className="text-[11px] text-slate-400">Notify on completed billing transactions.</p>
                   </div>
                   <input
                     type="checkbox"
@@ -499,8 +573,8 @@ export default function SettingsPage() {
 
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border">
                   <div>
-                    <h4 className="font-extrabold text-xs text-slate-900">Purchase Notifications</h4>
-                    <p className="text-[11px] text-slate-400">Alerts for new supplier purchases and stock additions.</p>
+                    <h4 className="font-extrabold text-xs text-slate-900">Purchase Order Updates</h4>
+                    <p className="text-[11px] text-slate-400">Notify when new vendor stock is added.</p>
                   </div>
                   <input
                     type="checkbox"
@@ -514,7 +588,7 @@ export default function SettingsPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5"
+                    className="px-6 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl text-xs shadow-md shadow-blue-600/20 transition cursor-pointer flex items-center gap-1.5 min-h-[44px]"
                   >
                     <Check className="w-4 h-4" /> Save Changes
                   </button>
@@ -523,9 +597,125 @@ export default function SettingsPage() {
             </div>
           )}
 
-        </div>
+          {/* 6. DANGER ZONE: DELETE ACCOUNT & BUSINESS (Owner Only) */}
+          {activeTab === "danger" && isOwner && (
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-rose-200/80 shadow-xs space-y-6">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-rose-600">
+                  <AlertTriangle className="w-5 h-5" />
+                  <h3 className="text-base font-black">Danger Zone — Delete Account & Business</h3>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Permanently delete this business account, workspace settings, catalog, and associated records.
+                </p>
+              </div>
 
+              <div className="p-5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-2">
+                <p className="font-extrabold">⚠️ Warning: Permanent Deletion</p>
+                <p className="text-rose-700 leading-relaxed">
+                  This action will permanently purge <strong className="text-rose-950">{business?.name || "your business"}</strong> and its workspace data. This action cannot be undone. Server-side financial retention rules apply before account purge.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmBusinessName("");
+                  setConfirmWord("");
+                  setDeleteError("");
+                  setDeleteModalOpen(true);
+                }}
+                className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-2xl text-xs shadow-lg shadow-rose-600/20 transition cursor-pointer min-h-[48px] flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" /> Delete Account & Business
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* CONFIRM DELETE ACCOUNT & BUSINESS MODAL */}
+      {deleteModalOpen && isOwner && business && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-[calc(100%-24px)] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto text-xs">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2 text-rose-600">
+                <AlertTriangle className="w-5 h-5" />
+                <h3 className="text-base font-black">Delete Account & Business</h3>
+              </div>
+              <button onClick={() => setDeleteModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl space-y-2">
+              <p className="font-extrabold text-xs">Confirm Permanent Deletion</p>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                To confirm deletion of <strong className="text-rose-950 font-black">{business.name}</strong>, please enter the exact business name below and type <strong className="text-rose-950 font-black">DELETE</strong>.
+              </p>
+            </div>
+
+            <form onSubmit={handleDeleteAccountAndBusiness} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Type exact business name: <strong className="text-slate-900">{business.name}</strong>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={confirmBusinessName}
+                  onChange={(e) => setConfirmBusinessName(e.target.value)}
+                  placeholder={business.name}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-600 h-11"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Type <strong className="text-rose-600 font-black">DELETE</strong> to confirm
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={confirmWord}
+                  onChange={(e) => setConfirmWord(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-rose-600 font-mono h-11"
+                />
+              </div>
+
+              {deleteError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold">
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setDeleteModalOpen(false)}
+                  className="flex-1 py-3 border rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer min-h-[44px]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deletingBusiness || confirmBusinessName.trim() !== business.name.trim() || confirmWord.trim() !== "DELETE"}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
+                >
+                  {deletingBusiness ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" /> Delete Permanently
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </SharedDashboardLayout>
   );
 }
