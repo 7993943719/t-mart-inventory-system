@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import React, { useEffect, useState, useRef } from "react";
 import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout";
 import { createClient } from "@/lib/supabase/client";
@@ -416,90 +418,59 @@ export default function BillingPage() {
       if (!user) throw new Error("User not authenticated.");
 
       const businessId = business?.id || user.id;
-      const invoiceNumber = await getNextInvoiceNumber(supabase);
 
-      // Re-verify stock levels from Supabase
-      for (const item of cart) {
-        const { data: currentProd } = await supabase
-          .from("products")
-          .select("stock_quantity, name")
-          .eq("id", item.product.id)
-          .single();
-
-        const currentQty = Number(currentProd?.stock_quantity || 0);
-        if (currentQty < item.quantity) {
-          throw new Error(`Insufficient stock for "${item.product.name}". Available: ${currentQty}, Requested: ${item.quantity}`);
+      // Deduplicate cart items if duplicate product rows exist in cart state
+      const consolidatedCartMap = new Map<string, CartItem>();
+      cart.forEach((item) => {
+        if (consolidatedCartMap.has(item.product.id)) {
+          const existing = consolidatedCartMap.get(item.product.id)!;
+          existing.quantity += item.quantity;
+        } else {
+          consolidatedCartMap.set(item.product.id, { ...item });
         }
+      });
+      const consolidatedCart = Array.from(consolidatedCartMap.values());
+
+      // Prepare items payload
+      const itemsPayload = consolidatedCart.map((item) => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+        selling_price: item.product.selling_price,
+      }));
+
+      // Call database RPC complete_sale_transaction strictly for atomic sale completion
+      const { data: rpcResult, error: rpcError } = await supabase.rpc("complete_sale_transaction", {
+        p_business_id: businessId,
+        p_user_id: user.id,
+        p_customer_id: selectedCustomerId || null,
+        p_customer_name: customerName || "Walk-in Customer",
+        p_payment_method: paymentMethod,
+        p_subtotal: Number(subtotal.toFixed(2)),
+        p_discount: Number(discount || 0),
+        p_total_amount: Number(grandTotal.toFixed(2)),
+        p_items: itemsPayload,
+      });
+
+      if (rpcError) {
+        throw new Error(rpcError.message || "Failed to complete sale transaction.");
       }
 
-      // 1. Insert Sale record into Supabase with customer_id and customer_name
-      const { data: sale, error: saleError } = await supabase
-        .from("sales")
-        .insert({
-          business_id: businessId,
-          user_id: user.id,
-          invoice_number: invoiceNumber,
-          customer_name: customerName || "Walk-in Customer",
-          customer_id: selectedCustomerId || null,
-          subtotal: Number(subtotal.toFixed(2)),
-          discount: Number(discount || 0),
-          total_amount: Number(grandTotal.toFixed(2)),
-          payment_method: paymentMethod,
-        })
-        .select()
-        .single();
-
-      if (saleError) throw new Error(saleError.message);
-
-      // 2. Insert Sale Items
-      const saleItemsList = [];
-      for (const item of cart) {
-        const itemTotal = Number((item.product.selling_price * item.quantity).toFixed(2));
-
-        const { error: itemErr } = await supabase.from("sale_items").insert({
-          sale_id: sale.id,
-          product_id: item.product.id,
-          quantity: item.quantity,
-          selling_price: item.product.selling_price,
-          total_amount: itemTotal,
-        });
-
-        if (itemErr) {
-          throw new Error(`Sale items insert failed: ${itemErr.message}`);
-        }
-
-        saleItemsList.push({
-          product_name: item.product.name,
-          unit: item.product.unit,
-          price: item.product.selling_price,
-          quantity: item.quantity,
-          total: itemTotal,
-        });
-
-        // Update Product stock
-        const newStock = Math.max(0, Number(item.product.stock_quantity || 0) - item.quantity);
-        await supabase
-          .from("products")
-          .update({ stock_quantity: newStock, updated_at: new Date().toISOString() })
-          .eq("id", item.product.id);
-
-        // Record stock_movement
-        await supabase.from("stock_movements").insert([
-          {
-            tenant_id: businessId,
-            product_id: item.product.id,
-            product_name: item.product.name,
-            type: "Sale",
-            quantity: item.quantity,
-            reference: `Invoice: ${invoiceNumber}`,
-            user_name: userName,
-            created_at: new Date().toISOString(),
-          },
-        ]);
+      if (rpcResult && rpcResult.error) {
+        throw new Error(rpcResult.error);
       }
+
+      const finalInvoiceNumber = rpcResult?.invoice_number || rpcResult?.bill_no || currentBillNo;
+
+      const saleItemsList = consolidatedCart.map((item) => ({
+        product_name: item.product.name,
+        unit: item.product.unit,
+        price: item.product.selling_price,
+        quantity: item.quantity,
+        total: Number((item.product.selling_price * item.quantity).toFixed(2)),
+      }));
 
       const receiptData = {
-        invoice_number: invoiceNumber,
+        invoice_number: finalInvoiceNumber,
         date: new Date().toLocaleString(),
         customer_name: customerName,
         payment_method: paymentMethod,
@@ -514,7 +485,7 @@ export default function BillingPage() {
 
       setLastSaleReceipt(receiptData);
       setSaleCompletedModal(true);
-      setSuccessMsg(`Sale completed! Invoice: ${invoiceNumber}`);
+      setSuccessMsg(`Sale completed! Invoice: ${finalInvoiceNumber}`);
 
       await loadData();
       setCart([]);
@@ -525,7 +496,7 @@ export default function BillingPage() {
       setPaymentMethod("CASH");
     } catch (err: any) {
       console.error("Sale completion failed:", err);
-      setErrorMsg(err.message || "Failed to complete sale.");
+      setErrorMsg(err.message || "Failed to complete sale transaction.");
     } finally {
       setSubmitting(false);
     }
