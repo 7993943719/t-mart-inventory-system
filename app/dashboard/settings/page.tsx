@@ -13,7 +13,6 @@ import {
   AlertTriangle,
   Trash2,
   X,
-  Lock,
   Loader2,
 } from "lucide-react";
 
@@ -205,7 +204,6 @@ export default function SettingsPage() {
     { id: "inventory", label: "Inventory", icon: Boxes },
     { id: "billing", label: "Billing", icon: ReceiptText },
     { id: "notifications", label: "Notifications", icon: Bell },
-    ...(isOwner ? [{ id: "danger", label: "Danger Zone", icon: Trash2 }] : []),
   ];
 
   return (
@@ -242,22 +240,17 @@ export default function SettingsPage() {
             {settingsTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
-              const isDanger = tab.id === "danger";
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-xs transition cursor-pointer ${
                     isActive
-                      ? isDanger
-                        ? "bg-rose-600 text-white shadow-md shadow-rose-600/20 font-black"
-                        : "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-black"
-                      : isDanger
-                        ? "hover:bg-rose-50 text-rose-600"
-                        : "hover:bg-slate-50 text-slate-700"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-black"
+                      : "hover:bg-slate-50 text-slate-700"
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? "text-white" : isDanger ? "text-rose-600" : "text-blue-600"}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-blue-600"}`} />
                   <span>{tab.label}</span>
                 </button>
               );
@@ -270,7 +263,7 @@ export default function SettingsPage() {
 
           {/* 1. BUSINESS PROFILE */}
           {activeTab === "profile" && (
-            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-8">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Business Profile</h3>
                 <p className="text-xs text-slate-400">Update your store information and tax details.</p>
@@ -343,6 +336,41 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </form>
+
+              {/* DANGER ZONE: DELETE ACCOUNT & BUSINESS (Owner Only, inside Business Profile) */}
+              {isOwner && (
+                <div className="pt-6 border-t border-slate-200 space-y-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-rose-600">
+                      <AlertTriangle className="w-5 h-5" />
+                      <h3 className="text-base font-black">Danger Zone — Delete Account & Business</h3>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Permanently delete this business workspace, settings, catalog, and associated records.
+                    </p>
+                  </div>
+
+                  <div className="p-5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-2">
+                    <p className="font-extrabold">⚠️ Warning: Permanent Deletion</p>
+                    <p className="text-rose-700 leading-relaxed">
+                      This action will permanently purge <strong className="text-rose-950">{business?.name || "your business"}</strong> and its workspace data. This action cannot be undone. Server-side financial retention rules apply before account purge.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmBusinessName("");
+                      setConfirmWord("");
+                      setDeleteError("");
+                      setDeleteModalOpen(true);
+                    }}
+                    className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-2xl text-xs shadow-lg shadow-rose-600/20 transition cursor-pointer min-h-[48px] flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> Delete Account & Business
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -594,41 +622,6 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </form>
-            </div>
-          )}
-
-          {/* 6. DANGER ZONE: DELETE ACCOUNT & BUSINESS (Owner Only) */}
-          {activeTab === "danger" && isOwner && (
-            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-rose-200/80 shadow-xs space-y-6">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-rose-600">
-                  <AlertTriangle className="w-5 h-5" />
-                  <h3 className="text-base font-black">Danger Zone — Delete Account & Business</h3>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Permanently delete this business account, workspace settings, catalog, and associated records.
-                </p>
-              </div>
-
-              <div className="p-5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-2">
-                <p className="font-extrabold">⚠️ Warning: Permanent Deletion</p>
-                <p className="text-rose-700 leading-relaxed">
-                  This action will permanently purge <strong className="text-rose-950">{business?.name || "your business"}</strong> and its workspace data. This action cannot be undone. Server-side financial retention rules apply before account purge.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmBusinessName("");
-                  setConfirmWord("");
-                  setDeleteError("");
-                  setDeleteModalOpen(true);
-                }}
-                className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-2xl text-xs shadow-lg shadow-rose-600/20 transition cursor-pointer min-h-[48px] flex items-center justify-center gap-2"
-              >
-                <Trash2 className="w-4 h-4" /> Delete Account & Business
-              </button>
             </div>
           )}
         </div>
