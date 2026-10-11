@@ -41,12 +41,10 @@ jobs:
 
       - name: Build Android debug APK
         working-directory: android
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}/.gradle
         run: |
           chmod +x gradlew
           ./gradlew --stop
-          ./gradlew --no-daemon -Dorg.gradle.java.home="$JAVA_HOME" assembleDebug
+          ./gradlew --no-daemon assembleDebug
 
       - name: Upload TWEB APK
         uses: actions/upload-artifact@v4
