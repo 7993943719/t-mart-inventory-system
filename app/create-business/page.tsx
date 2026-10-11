@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+export const dynamic = "force-dynamic";
+
+import React, { useState, Suspense } from "react";
 import { createBusiness } from "./actions";
+import { useSearchParams } from "next/navigation";
 import {
   Store,
   Building,
@@ -13,11 +16,9 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-export default function CreateBusinessPage({
-  searchParams,
-}: {
-  searchParams?: { error?: string; message?: string };
-}) {
+function CreateBusinessContent() {
+  const searchParams = useSearchParams();
+  const errorMsg = searchParams.get("error");
   const [loading, setLoading] = useState(false);
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
 
@@ -50,10 +51,10 @@ export default function CreateBusinessPage({
           <p className="text-xs text-slate-500 font-medium">Set up your business and choose your billing cycle. Includes 3 days free trial.</p>
         </div>
 
-        {searchParams?.error && (
+        {errorMsg && (
           <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold shadow-xs flex items-center gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{searchParams.error}</span>
+            <span>{errorMsg}</span>
           </div>
         )}
 
@@ -146,5 +147,13 @@ export default function CreateBusinessPage({
         </div>
       </div>
     </main>
+  );
+}
+
+export default function CreateBusinessPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs font-bold text-slate-400">Loading...</div>}>
+      <CreateBusinessContent />
+    </Suspense>
   );
 }

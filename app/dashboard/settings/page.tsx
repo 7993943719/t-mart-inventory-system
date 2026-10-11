@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -11,9 +12,10 @@ import {
   Bell,
   Check,
   AlertTriangle,
-  Trash2,
-  X,
-  Loader2,
+  Store,
+  Plus,
+  ArrowLeftRight,
+  Sparkles,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -52,13 +54,6 @@ export default function SettingsPage() {
   const [notifLowStock, setNotifLowStock] = useState(true);
   const [notifNewSale, setNotifNewSale] = useState(true);
   const [notifPurchase, setNotifPurchase] = useState(true);
-
-  // Delete Account & Business state (Owner only)
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [confirmBusinessName, setConfirmBusinessName] = useState("");
-  const [confirmWord, setConfirmWord] = useState("");
-  const [deletingBusiness, setDeletingBusiness] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
 
   const isOwner = role && ["owner", "OWNER"].includes(role.toLowerCase());
 
@@ -142,60 +137,6 @@ export default function SettingsPage() {
       setSubmitting(false);
       setTimeout(() => setSuccessMsg(""), 4000);
     }, 500);
-  };
-
-  const handleDeleteAccountAndBusiness = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!business?.id || !business?.name) return;
-
-    if (confirmBusinessName.trim() !== business.name.trim()) {
-      setDeleteError("Entered business name does not match exact business name.");
-      return;
-    }
-
-    if (confirmWord.trim() !== "DELETE") {
-      setDeleteError("Please type DELETE in capital letters to confirm.");
-      return;
-    }
-
-    setDeletingBusiness(true);
-    setDeleteError("");
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("Authentication session expired. Please log in again.");
-      }
-
-      // Call Supabase Edge Function delete-account-business using user's access token
-      const { data: resData, error: fnError } = await supabase.functions.invoke("delete-account-business", {
-        body: {
-          business_id: business.id,
-          business_name: business.name,
-          confirmation: "DELETE",
-        },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (fnError) {
-        throw new Error(fnError.message || "Failed to delete account and business.");
-      }
-
-      if (resData && resData.success === false) {
-        throw new Error(resData.error || resData.message || "Deletion request denied by server.");
-      }
-
-      // Only sign out and redirect to login after server confirms deletion
-      await supabase.auth.signOut();
-      window.location.href = "/login?message=" + encodeURIComponent("Account and business permanently deleted.");
-    } catch (err: any) {
-      console.error("Delete business error:", err);
-      setDeleteError(err.message || "Deletion failed. Ensure financial retention rules allow account closure.");
-    } finally {
-      setDeletingBusiness(false);
-    }
   };
 
   const settingsTabs = [
@@ -337,38 +278,63 @@ export default function SettingsPage() {
                 </div>
               </form>
 
-              {/* DANGER ZONE: DELETE ACCOUNT & BUSINESS (Owner Only, inside Business Profile) */}
-              {isOwner && (
-                <div className="pt-6 border-t border-slate-200 space-y-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-rose-600">
-                      <AlertTriangle className="w-5 h-5" />
-                      <h3 className="text-base font-black">Danger Zone — Delete Account & Business</h3>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Permanently delete this business workspace, settings, catalog, and associated records.
-                    </p>
+              {/* BUSINESS WORKSPACE ACTIONS */}
+              <div className="pt-6 border-t border-slate-200 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 p-2.5 text-white shadow-lg shadow-indigo-600/20">
+                    <Sparkles className="w-5 h-5" />
                   </div>
-
-                  <div className="p-5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-900 space-y-2">
-                    <p className="font-extrabold">⚠️ Warning: Permanent Deletion</p>
-                    <p className="text-rose-700 leading-relaxed">
-                      This action will permanently purge <strong className="text-rose-950">{business?.name || "your business"}</strong> and its workspace data. This action cannot be undone. Server-side financial retention rules apply before account purge.
-                    </p>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Business Workspace</h3>
+                    <p className="text-xs text-slate-500">Manage businesses connected to your TWEB login.</p>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConfirmBusinessName("");
-                      setConfirmWord("");
-                      setDeleteError("");
-                      setDeleteModalOpen(true);
-                    }}
-                    className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-2xl text-xs shadow-lg shadow-rose-600/20 transition cursor-pointer min-h-[48px] flex items-center justify-center gap-2"
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Link
+                    href="/create-business"
+                    className="group rounded-2xl p-4 text-white bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 shadow-lg shadow-indigo-600/15 hover:shadow-xl hover:-translate-y-0.5 transition-all min-h-[132px] flex flex-col justify-between"
                   >
-                    <Trash2 className="w-4 h-4" /> Delete Account & Business
-                  </button>
+                    <div className="flex items-center justify-between">
+                      <span className="rounded-xl bg-white/15 p-2.5"><Plus className="w-5 h-5" /></span>
+                      <ArrowLeftRight className="w-4 h-4 text-white/70 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                    <div>
+                      <p className="font-black text-sm">Create New Business</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-white/80">Set up another store or workspace.</p>
+                    </div>
+                  </Link>
+                  <Link
+                    href="/select-business"
+                    className="group rounded-2xl p-4 border border-slate-200 bg-gradient-to-br from-white to-slate-50 hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-900/5 hover:-translate-y-0.5 transition-all min-h-[132px] flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 p-2.5 text-white shadow-md shadow-emerald-600/20"><Store className="w-5 h-5" /></span>
+                      <ArrowLeftRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                    <div>
+                      <p className="font-black text-sm text-slate-900">Switch Business</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Open another business linked to your account.</p>
+                    </div>
+                  </Link>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Products, purchases, sales, staff, and reports must remain isolated for each business.
+                </p>
+              </div>
+
+              {/* BUSINESS DELETION SAFETY NOTICE */}
+              {isOwner && (
+                <div className="pt-6 border-t border-rose-200 space-y-3">
+                  <div className="flex items-center gap-2 text-rose-700">
+                    <AlertTriangle className="w-5 h-5" />
+                    <h3 className="text-base font-black">Delete Current Business</h3>
+                  </div>
+                  <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-4 text-xs text-amber-950 space-y-1.5">
+                    <p className="font-extrabold">Deletion is temporarily disabled for safety.</p>
+                    <p className="leading-relaxed text-amber-900">
+                      Before deletion can be enabled, TWEB must safely handle purchase bills, sales items, stock movements, financial records, and staff access. Your login and any other businesses must remain intact. No data has been deleted.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -627,88 +593,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* CONFIRM DELETE ACCOUNT & BUSINESS MODAL */}
-      {deleteModalOpen && isOwner && business && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-[calc(100%-24px)] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto text-xs">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div className="flex items-center gap-2 text-rose-600">
-                <AlertTriangle className="w-5 h-5" />
-                <h3 className="text-base font-black">Delete Account & Business</h3>
-              </div>
-              <button onClick={() => setDeleteModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl space-y-2">
-              <p className="font-extrabold text-xs">Confirm Permanent Deletion</p>
-              <p className="text-[11px] text-rose-700 leading-relaxed">
-                To confirm deletion of <strong className="text-rose-950 font-black">{business.name}</strong>, please enter the exact business name below and type <strong className="text-rose-950 font-black">DELETE</strong>.
-              </p>
-            </div>
-
-            <form onSubmit={handleDeleteAccountAndBusiness} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Type exact business name: <strong className="text-slate-900">{business.name}</strong>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={confirmBusinessName}
-                  onChange={(e) => setConfirmBusinessName(e.target.value)}
-                  placeholder={business.name}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-rose-600 h-11"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Type <strong className="text-rose-600 font-black">DELETE</strong> to confirm
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={confirmWord}
-                  onChange={(e) => setConfirmWord(e.target.value)}
-                  placeholder="DELETE"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-rose-600 font-mono h-11"
-                />
-              </div>
-
-              {deleteError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold">
-                  {deleteError}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-3 border-t">
-                <button
-                  type="button"
-                  onClick={() => setDeleteModalOpen(false)}
-                  className="flex-1 py-3 border rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer min-h-[44px]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={deletingBusiness || confirmBusinessName.trim() !== business.name.trim() || confirmWord.trim() !== "DELETE"}
-                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
-                >
-                  {deletingBusiness ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Deleting...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4" /> Delete Permanently
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </SharedDashboardLayout>
   );
 }
