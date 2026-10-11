@@ -44,6 +44,11 @@ export default function StaffPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+const [activeTab, setActiveTab] = useState<"directory" | "attendance" | "salary">("directory");
+const [attendanceDate, setAttendanceDate] = useState(
+  `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`
+);
+
 
   // Modals
   const [addModalOpen, setAddModalOpen] = useState(false);
