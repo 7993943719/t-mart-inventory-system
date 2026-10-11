@@ -361,6 +361,46 @@ const [attendanceDate, setAttendanceDate] = useState(
       pageTitle="Staff"
     >
       {/* PAGE HEADER */}
+{/* STAFF PAGE TABS */}
+<div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-2 mb-6">
+  <button
+    type="button"
+    onClick={() => setActiveTab("directory")}
+    className={`px-4 py-3 rounded-xl text-xs font-bold transition ${
+      activeTab === "directory"
+        ? "bg-blue-600 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100"
+    }`}
+  >
+    <Users className="w-4 h-4 inline mr-2" />
+    Staff Directory
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setActiveTab("attendance")}
+    className={`px-4 py-3 rounded-xl text-xs font-bold transition ${
+      activeTab === "attendance"
+        ? "bg-blue-600 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100"
+    }`}
+  >
+    Attendance
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setActiveTab("salary")}
+    className={`px-4 py-3 rounded-xl text-xs font-bold transition ${
+      activeTab === "salary"
+        ? "bg-blue-600 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100"
+    }`}
+  >
+    Salary Report
+  </button>
+</div>
+
       <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20">
