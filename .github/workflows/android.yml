@@ -2,9 +2,9 @@ name: TWEB Android CI
 
 on:
   push:
-    branches: [ "master", "main" ]
+    branches: ["master", "main"]
   pull_request:
-    branches: [ "master", "main" ]
+    branches: ["master", "main"]
   workflow_dispatch:
 
 jobs:
@@ -19,12 +19,12 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
 
       - name: Install dependencies
@@ -38,6 +38,9 @@ jobs:
 
       - name: Sync Capacitor Android
         run: npx cap sync android
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Build Android debug APK
         working-directory: android
