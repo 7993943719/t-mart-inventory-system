@@ -120,3 +120,153 @@ export async function createStaffMember(formData: {
   revalidatePath("/dashboard/staff");
   return { success: true, message: `Staff user ${fullName} created successfully` };
 }
+
+
+export async function saveStaffAttendance(input: {
+  businessId: string;
+  attendanceDate: string;
+  records: {
+    businessMemberId: string;
+    status: "present" | "absent" | "half_day" | "leave";
+    notes?: string;
+  }[];
+}) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Please log in again.");
+  }
+
+  const { data: memberships, error: membershipError } =
+    await supabase
+      .from("business_members")
+      .select("business_id, role, status")
+      .eq("user_id", user.id)
+      .eq("business_id", input.businessId);
+
+  if (membershipError || !memberships?.length) {
+    throw new Error("Business membership not found.");
+  }
+
+  const role = (memberships[0].role || "").toLowerCase();
+
+  if (!["owner", "admin", "manager"].includes(role)) {
+    throw new Error("Only an owner, admin, or manager can mark attendance.");
+  }
+
+  if (!input.attendanceDate || !input.businessId) {
+    throw new Error("Business and attendance date are required.");
+  }
+
+  if (!input.records.length) {
+    throw new Error("No attendance records provided.");
+  }
+
+  const rows = input.records.map((record) => ({
+    business_id: input.businessId,
+    business_member_id: record.businessMemberId,
+    attendance_date: input.attendanceDate,
+    status: record.status,
+    notes: record.notes?.trim() || null,
+    marked_by: user.id,
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase
+    .from("staff_attendance")
+    .upsert(rows, {
+      onConflict: "business_member_id,attendance_date",
+    });
+
+  if (error) {
+    throw new Error(`Could not save attendance: ${error.message}`);
+  }
+
+  revalidatePath("/dashboard/staff");
+
+  return { success: true, message: "Attendance saved successfully." };
+}
+
+export async function saveStaffSalary(input: {
+  businessId: string;
+  businessMemberId: string;
+  monthlySalary: number;
+  workingDaysPerMonth: number;
+  effectiveFrom: string;
+}) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Please log in again.");
+  }
+
+  const { data: memberships, error: membershipError } =
+    await supabase
+      .from("business_members")
+      .select("business_id, role, status")
+      .eq("user_id", user.id)
+      .eq("business_id", input.businessId);
+
+  if (membershipError || !memberships?.length) {
+    throw new Error("Business membership not found.");
+  }
+
+  const role = (memberships[0].role || "").toLowerCase();
+
+  if (!["owner", "admin", "manager"].includes(role)) {
+    throw new Error("Only an owner, admin, or manager can set salary.");
+  }
+
+  if (
+    !Number.isFinite(input.monthlySalary) ||
+    input.monthlySalary < 0
+  ) {
+    throw new Error("Enter a valid monthly salary.");
+  }
+
+  if (
+    !Number.isInteger(input.workingDaysPerMonth) ||
+    input.workingDaysPerMonth < 1 ||
+    input.workingDaysPerMonth > 31
+  ) {
+    throw new Error("Working days must be between 1 and 31.");
+  }
+
+  if (!input.businessMemberId || !input.effectiveFrom) {
+    throw new Error("Staff member and effective date are required.");
+  }
+
+  const { error } = await supabase
+    .from("staff_salary_settings")
+    .upsert(
+      {
+        business_id: input.businessId,
+        business_member_id: input.businessMemberId,
+        monthly_salary: input.monthlySalary,
+        working_days_per_month: input.workingDaysPerMonth,
+        effective_from: input.effectiveFrom,
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "business_member_id" }
+    );
+
+  if (error) {
+    throw new Error(`Could not save salary: ${error.message}`);
+  }
+
+  revalidatePath("/dashboard/staff");
+
+  return { success: true, message: "Salary settings saved successfully." };
+}
+

@@ -44,6 +44,11 @@ export default function StaffPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+const [activeTab, setActiveTab] = useState<"directory" | "attendance" | "salary">("directory");
+const [attendanceDate, setAttendanceDate] = useState(
+  `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`
+);
+
 
   // Modals
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -356,6 +361,46 @@ export default function StaffPage() {
       pageTitle="Staff"
     >
       {/* PAGE HEADER */}
+{/* STAFF PAGE TABS */}
+<div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-2 mb-6">
+  <button
+    type="button"
+    onClick={() => setActiveTab("directory")}
+    className={`px-4 py-3 rounded-xl text-xs font-bold transition ${
+      activeTab === "directory"
+        ? "bg-blue-600 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100"
+    }`}
+  >
+    <Users className="w-4 h-4 inline mr-2" />
+    Staff Directory
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setActiveTab("attendance")}
+    className={`px-4 py-3 rounded-xl text-xs font-bold transition ${
+      activeTab === "attendance"
+        ? "bg-blue-600 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100"
+    }`}
+  >
+    Attendance
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setActiveTab("salary")}
+    className={`px-4 py-3 rounded-xl text-xs font-bold transition ${
+      activeTab === "salary"
+        ? "bg-blue-600 text-white shadow-sm"
+        : "text-slate-600 hover:bg-slate-100"
+    }`}
+  >
+    Salary Report
+  </button>
+</div>
+
       <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20">
@@ -382,7 +427,11 @@ export default function StaffPage() {
         )}
       </div>
 
-      {errorMsg && (
+     
+{activeTab === "directory" && (
+  <>
+  {errorMsg && (
+
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold mb-6">
           {errorMsg}
         </div>
@@ -739,11 +788,13 @@ export default function StaffPage() {
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px]"
               >
                 {submitting ? "Disabling..." : "Disable User"}
-              </button>
+                           </button>
             </div>
           </div>
         </div>
       )}
+      </>
+    )}
     </SharedDashboardLayout>
   );
 }
