@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'TWEB',
   webDir: 'public',
   server: {
-    url: 'https://t-mart-inventory-system.vercel.app',
+    url: 'https://tweb-production-new.vercel.app',
     androidScheme: 'https'
   },
   android: {
