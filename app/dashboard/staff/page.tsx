@@ -788,11 +788,13 @@ const [attendanceDate, setAttendanceDate] = useState(
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px]"
               >
                 {submitting ? "Disabling..." : "Disable User"}
-              </button>
+                           </button>
             </div>
           </div>
         </div>
       )}
+      </>
+    )}
     </SharedDashboardLayout>
   );
 }
