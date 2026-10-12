@@ -13,6 +13,7 @@ import {
   Boxes,
   UserCheck,
   Truck,
+  Share2,
   LogOut,
 } from "lucide-react";
 
@@ -104,7 +105,18 @@ export function SharedDashboardLayout({
           <div style={{ padding: "0 12px 12px 12px", fontSize: "11px", color: "#64748b" }}>
             <strong style={{ color: "#334155" }}>{userName}</strong> ({role})
           </div>
-          <form action={logout}>
+
+          {/* Invite & Share App Link */}
+          <button
+            type="button"
+            onClick={() => go("/dashboard/more")}
+            style={styles.shareAppButton}
+          >
+            <Share2 style={{ width: "18px", height: "18px", flexShrink: 0 }} />
+            <span>Invite & Share App</span>
+          </button>
+
+          <form action={logout} style={{ marginTop: "8px" }}>
             <button type="submit" style={styles.logoutButton}>
               <span>↪</span>
               Logout
@@ -234,6 +246,22 @@ const styles: any = {
     marginTop: "auto",
     padding: "16px 12px 20px",
     borderTop: "1px solid #edf0f5",
+  },
+  shareAppButton: {
+    width: "100%",
+    minHeight: "44px",
+    border: "none",
+    borderRadius: "12px",
+    background: "linear-gradient(135deg, #2563eb, #4f46e5)",
+    color: "#ffffff",
+    fontSize: "13px",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "0 14px",
+    boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
   },
   logoutButton: {
     width: "100%",
