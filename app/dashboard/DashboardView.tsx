@@ -18,6 +18,10 @@ import {
   Eye,
   X,
   FileText,
+  DollarSign,
+  AlertTriangle,
+  Flame,
+  PieChart,
 } from "lucide-react";
 
 interface Props {
@@ -163,6 +167,12 @@ export default function DashboardView({
     loadDashboardData();
   }, [loadDashboardData]);
 
+  // Stock Valuation
+  const stockValuation = allProducts.reduce(
+    (sum, p) => sum + Number(p.stock_quantity || 0) * Number(p.purchase_price || p.selling_price || 0),
+    0
+  );
+
   // Compute Enriched Sales for Owner/Admin
   const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
@@ -189,7 +199,7 @@ export default function DashboardView({
   startOfToday.setHours(0, 0, 0, 0);
   const todaysEnrichedBills = enrichedSales.filter((s) => new Date(s.created_at) >= startOfToday);
 
-  // Product-wise Report
+  // Product-wise Report & Top Sellers
   const productSalesMap = new Map<string, { name: string; qty: number; sales: number; cost: number; profit: number }>();
   allSaleItems.forEach((item) => {
     const prod = productMap.get(item.product_id);
@@ -209,7 +219,9 @@ export default function DashboardView({
     entry.profit += profitVal;
   });
 
-  const productReportList = Array.from(productSalesMap.values()).sort((a, b) => b.sales - a.sales);
+  const topSellersList = Array.from(productSalesMap.values())
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, 5);
 
   const handleOpenBillDetails = async (sale: any) => {
     setSelectedSale(sale);
@@ -259,7 +271,7 @@ export default function DashboardView({
       <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20">
-            TWEB SaaS
+            TWEB Enterprise POS
           </span>
           <h2 className="text-2xl sm:text-3xl font-black mt-2">Welcome, {userName} 👋</h2>
           <p className="text-xs text-indigo-100 font-medium mt-1">Managing <strong className="text-white">{businessName}</strong></p>
@@ -282,73 +294,57 @@ export default function DashboardView({
         </div>
       )}
 
-      {/* 2. MAIN QUICK ACTIONS (7 ACTIONS) */}
+      {/* 2. MAIN QUICK ACTIONS (5 PRIMARY ACTIONS) */}
       <section className="mb-8 space-y-3">
-        <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Main Quick Actions</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Quick Actions</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <button
             onClick={() => go("/dashboard/billing")}
             className="p-4 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl shadow-md shadow-blue-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
             <Plus className="w-5 h-5 text-white" />
-            <span className="font-black text-xs">+ New Bill</span>
+            <span className="font-black text-xs">+ New Sale</span>
+          </button>
+
+          <button
+            onClick={() => go("/dashboard/purchases")}
+            className="p-4 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-2xl shadow-md shadow-purple-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
+          >
+            <FileText className="w-5 h-5 text-white" />
+            <span className="font-black text-xs">Add Purchase</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/products")}
-            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
+            className="p-4 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white rounded-2xl shadow-md shadow-fuchsia-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
-            <Package className="w-5 h-5 text-indigo-600" />
-            <span className="font-extrabold text-xs">Products</span>
+            <Package className="w-5 h-5 text-white" />
+            <span className="font-black text-xs">Add Product</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/stock")}
-            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
+            className="p-4 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl shadow-md shadow-emerald-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
-            <Boxes className="w-5 h-5 text-emerald-600" />
-            <span className="font-extrabold text-xs">Stock</span>
-          </button>
-
-          <button
-            onClick={() => go("/dashboard/purchases")}
-            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
-          >
-            <FileText className="w-5 h-5 text-orange-600" />
-            <span className="font-extrabold text-xs">Purchases</span>
-          </button>
-
-          <button
-            onClick={() => go("/dashboard/customers")}
-            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
-          >
-            <UserCheck className="w-5 h-5 text-blue-600" />
-            <span className="font-extrabold text-xs">Customers</span>
-          </button>
-
-          <button
-            onClick={() => go("/dashboard/purchases")}
-            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
-          >
-            <Truck className="w-5 h-5 text-teal-600" />
-            <span className="font-extrabold text-xs">Vendors</span>
+            <Boxes className="w-5 h-5 text-white" />
+            <span className="font-black text-xs">Stock Check</span>
           </button>
 
           <button
             onClick={() => go("/dashboard/reports")}
-            className="p-4 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200/80 shadow-xs hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
+            className="p-4 bg-gradient-to-br from-cyan-600 to-blue-700 text-white rounded-2xl shadow-md shadow-cyan-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px] col-span-2 sm:col-span-1"
           >
-            <TrendingUp className="w-5 h-5 text-purple-600" />
-            <span className="font-extrabold text-xs">Reports</span>
+            <TrendingUp className="w-5 h-5 text-white" />
+            <span className="font-black text-xs">Reports</span>
           </button>
         </div>
       </section>
 
-      {/* 3. TODAY'S BUSINESS SUMMARY (Owner / Admin Only) */}
+      {/* 3. SUMMARY CARDS WITH STOCK VALUATION */}
       {isAdminOrOwner && (
         <section className="mb-8 space-y-3">
           <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Today's Business Summary</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             <div className="bg-white p-4 rounded-3xl border border-blue-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider">Today's Sales</p>
               <h3 className="text-lg sm:text-xl font-black text-slate-900">₹{todaysSalesTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
@@ -368,6 +364,10 @@ export default function DashboardView({
             <div className="bg-white p-4 rounded-3xl border border-purple-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider">Today's Bills</p>
               <h3 className="text-lg sm:text-xl font-black text-purple-600">{todaysBillsCount}</h3>
+            </div>
+            <div className="bg-white p-4 rounded-3xl border border-teal-100 shadow-xs space-y-1">
+              <p className="text-[10px] font-extrabold text-teal-600 uppercase tracking-wider">Stock Valuation</p>
+              <h3 className="text-lg sm:text-xl font-black text-teal-600">₹{stockValuation.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</h3>
             </div>
             <div className="bg-white p-4 rounded-3xl border border-cyan-100 shadow-xs space-y-1">
               <p className="text-[10px] font-extrabold text-cyan-600 uppercase tracking-wider">Total Products</p>
@@ -432,52 +432,42 @@ export default function DashboardView({
         </section>
       )}
 
-      {/* RECENT SALES & LOW STOCK ALERTS PANELS */}
+      {/* 5. TOP SELLING PRODUCTS & LOW STOCK ALERTS PANELS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* RECENT SALES */}
+        {/* TOP SELLING PRODUCTS */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
           <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-            <div>
-              <h3 className="text-base font-black text-slate-900">Recent Sales</h3>
-              <p className="text-xs text-slate-400 font-medium">Latest POS transactions</p>
+            <div className="flex items-center gap-2">
+              <Flame className="w-5 h-5 text-orange-500" />
+              <div>
+                <h3 className="text-base font-black text-slate-900">Top-Selling Products</h3>
+                <p className="text-xs text-slate-400 font-medium">Most popular items by volume</p>
+              </div>
             </div>
 
             <button
-              onClick={() => go("/dashboard/sales")}
+              onClick={() => go("/dashboard/reports")}
               className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1"
             >
-              View All <ArrowRight className="w-3.5 h-3.5" />
+              Reports <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {loading ? (
-            <div className="p-8 text-center text-xs text-slate-400">Loading recent sales...</div>
-          ) : recentSalesList.length === 0 ? (
-            <div className="p-8 bg-slate-50 rounded-2xl border border-dashed text-center space-y-2">
-              <Receipt className="w-8 h-8 text-slate-300 mx-auto" />
-              <p className="text-xs font-bold text-slate-700">No sales recorded today</p>
+          {topSellersList.length === 0 ? (
+            <div className="p-8 bg-slate-50 rounded-2xl border border-dashed text-center text-xs text-slate-400">
+              No top-selling item data available yet.
             </div>
           ) : (
             <div className="space-y-2">
-              {recentSalesList.map((s) => (
-                <div
-                  key={s.id}
-                  onClick={() => go("/dashboard/sales")}
-                  className="p-3.5 bg-slate-50 hover:bg-blue-50/50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs transition cursor-pointer"
-                >
+              {topSellersList.map((item, idx) => (
+                <div key={idx} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs">
                   <div>
-                    <span className="font-mono font-bold text-blue-600">{s.invoice_number || s.bill_no}</span>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      {new Date(s.created_at).toLocaleDateString()} • {new Date(s.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
+                    <h4 className="font-extrabold text-slate-900">{item.name}</h4>
+                    <p className="text-[10px] text-slate-400">Sales: <strong className="text-blue-600">₹{item.sales.toFixed(2)}</strong></p>
                   </div>
-
-                  <div className="text-right">
-                    <span className="font-black text-emerald-600 block text-sm">₹{Number(s.total_amount ?? s.total ?? 0).toFixed(2)}</span>
-                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-bold text-[9px] uppercase">
-                      {s.payment_method || "CASH"}
-                    </span>
-                  </div>
+                  <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full font-black text-xs">
+                    {item.qty} sold
+                  </span>
                 </div>
               ))}
             </div>
@@ -487,9 +477,12 @@ export default function DashboardView({
         {/* LOW STOCK ALERTS */}
         <section className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
           <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-            <div>
-              <h3 className="text-base font-black text-slate-900">Low Stock Alerts</h3>
-              <p className="text-xs text-slate-400 font-medium">Products requiring reorder</p>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              <div>
+                <h3 className="text-base font-black text-slate-900">Low Stock Alerts</h3>
+                <p className="text-xs text-slate-400 font-medium">Products requiring reorder</p>
+              </div>
             </div>
 
             <button

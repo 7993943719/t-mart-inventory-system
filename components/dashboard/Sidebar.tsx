@@ -11,10 +11,10 @@ import {
   ReceiptText,
   ShoppingCart,
   Users,
-  TrendingUp,
   Boxes,
   UserCheck,
   Truck,
+  Share2,
   LogOut,
 } from "lucide-react";
 
@@ -69,7 +69,7 @@ export function Sidebar({ businessName, userName, role }: Props) {
         </div>
 
         {/* 8 Navigation Items */}
-        <nav className="space-y-1.5 overflow-y-auto max-h-[calc(100vh-320px)] pr-1">
+        <nav className="space-y-1.5 overflow-y-auto max-h-[calc(100vh-360px)] pr-1">
           {navItems.map((item, idx) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -91,7 +91,7 @@ export function Sidebar({ businessName, userName, role }: Props) {
         </nav>
       </div>
 
-      {/* Bottom User Info & Logout */}
+      {/* Bottom User Info, Invite & Share App, and Logout */}
       <div className="pt-4 border-t border-blue-900/40 space-y-3">
         <div className="px-3.5 py-3 bg-blue-950/60 rounded-2xl border border-blue-900/40 flex items-center gap-3">
           <div className="w-9 h-9 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-black text-xs shrink-0 border border-indigo-500/30">
@@ -103,12 +103,20 @@ export function Sidebar({ businessName, userName, role }: Props) {
           </div>
         </div>
 
+        {/* Invite & Share App Button */}
+        <Link
+          href="/dashboard/more"
+          className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-2xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer min-h-[44px]"
+        >
+          <Share2 className="w-4 h-4 text-white shrink-0" /> Invite & Share App
+        </Link>
+
         <form action={logout}>
           <button
             type="submit"
             className="w-full flex items-center justify-center gap-2 py-3 bg-rose-600/10 hover:bg-rose-600 text-rose-400 hover:text-white font-extrabold text-xs rounded-2xl transition-all shadow-xs cursor-pointer min-h-[44px]"
           >
-            <LogOut className="w-4 h-4" /> Logout
+            <LogOut className="w-4 h-4 shrink-0" /> Logout
           </button>
         </form>
       </div>
