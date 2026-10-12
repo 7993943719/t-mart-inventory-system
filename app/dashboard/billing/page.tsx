@@ -474,10 +474,10 @@ export default function BillingPage() {
       )}
 
       {/* TWO COLUMN POS LAYOUT (Optimized for Laptops & Mobile) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="pos-billing-layout">
 
         {/* LEFT COLUMN: PRODUCT CATALOG & SEARCH */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="pos-catalog-column space-y-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Product Catalog</h3>
@@ -592,7 +592,7 @@ export default function BillingPage() {
         </div>
 
         {/* RIGHT COLUMN: STICKY CURRENT BILL PANEL */}
-        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-6">
+        <div className="pos-cart-column space-y-4">
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-md space-y-4">
             <div className="pb-3 border-b border-slate-100 space-y-3">
               <div className="flex justify-between items-center">

@@ -90,6 +90,33 @@ button {
   pointer-events: auto;
 }
 
+/* POS Two-Column Billing Layout */
+.pos-billing-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  .pos-billing-layout {
+    flex-direction: row;
+  }
+  .pos-catalog-column {
+    flex: 1 1 56%;
+    min-width: 0;
+    width: 56%;
+  }
+  .pos-cart-column {
+    flex: 0 0 380px;
+    width: 380px;
+    max-width: 42%;
+    position: sticky;
+    top: 24px;
+  }
+}
+
 @media (max-width: 768px) {
   .app-layout {
     display: block;
