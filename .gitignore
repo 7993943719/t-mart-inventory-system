@@ -43,3 +43,19 @@ Thumbs.db
 New _ Edge Functions _ *
 .vercel
 .env*
+
+# Android signing credentials — never commit
+/android/app/keystore.properties
+*.jks
+*.keystore
+
+# Build artifacts
+*.apk
+*.aab
+*.zip
+/TWEB-debug-APK/
+
+# Temporary local workspace files
+/Supabase Snippet Staff Attendance & Salary Settings (1).csv
+/Supabase Snippet Staff Attendance & Salary Settings.csv
+/TWEB-staff-page-updated.tsx
