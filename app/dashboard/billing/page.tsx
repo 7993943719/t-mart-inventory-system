@@ -13,20 +13,12 @@ import {
   Plus,
   Minus,
   Trash2,
-  Check,
-  Eye,
-  Printer,
-  Barcode,
   X,
   RefreshCw,
-  CreditCard,
-  DollarSign,
-  User,
-  AlertCircle,
   Package,
   Loader2,
-  FileText,
   UserCheck,
+  Tag,
 } from "lucide-react";
 
 interface CartItem {
@@ -71,8 +63,9 @@ export default function BillingPage() {
   const [customersList, setCustomersList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Search & Cart State
+  // Search, Category & Cart State
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("Walk-in Customer");
@@ -95,13 +88,6 @@ export default function BillingPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [lastSaleReceipt, setLastSaleReceipt] = useState<any>(null);
   const [saleCompletedModal, setSaleCompletedModal] = useState(false);
-
-  // View Saved Bill Details Modal State
-  const [viewBillModalOpen, setViewBillModalOpen] = useState(false);
-  const [selectedSale, setSelectedSale] = useState<any>(null);
-  const [saleItems, setSaleItems] = useState<any[]>([]);
-  const [loadingBillItems, setLoadingBillItems] = useState(false);
-  const [billDetailsError, setBillDetailsError] = useState("");
 
   // User & Business State
   const [business, setBusiness] = useState<any>(null);
@@ -158,6 +144,9 @@ export default function BillingPage() {
   useEffect(() => {
     loadData();
   }, [supabase]);
+
+  // Categories list
+  const categoriesList = ["ALL", ...Array.from(new Set(products.map((p) => p.category || "General")))];
 
   // Handle Customer Selection
   const handleSelectCustomer = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -221,74 +210,17 @@ export default function BillingPage() {
     }
   };
 
-  // View Bill Details & Fetch Sale Items from Supabase
-  const handleViewBill = async (sale: any) => {
-    setSelectedSale(sale);
-    setViewBillModalOpen(true);
-    setLoadingBillItems(true);
-    setBillDetailsError("");
-    setSaleItems([]);
-
-    try {
-      const { data: items, error: itemsError } = await supabase
-        .from("sale_items")
-        .select("*")
-        .eq("sale_id", sale.id)
-        .order("created_at", { ascending: true });
-
-      if (itemsError) throw itemsError;
-
-      if (!items || items.length === 0) {
-        setSaleItems([]);
-        return;
-      }
-
-      const enrichedItems = await Promise.all(
-        items.map(async (item: any) => {
-          let pName = item.product_name;
-          let unit = "pcs";
-
-          if (item.product_id) {
-            const { data: prod } = await supabase
-              .from("products")
-              .select("name, unit")
-              .eq("id", item.product_id)
-              .single();
-
-            if (prod) {
-              if (!pName) pName = prod.name;
-              if (prod.unit) unit = prod.unit;
-            }
-          }
-
-          return {
-            ...item,
-            product_name: pName || "Product",
-            unit: unit,
-            price: Number(item.price || item.unit_price || 0),
-            quantity: Number(item.quantity || 1),
-            total: Number(item.total || item.total_price || (item.price * item.quantity)),
-          };
-        })
-      );
-
-      setSaleItems(enrichedItems);
-    } catch (err: any) {
-      console.error("Error fetching bill details:", err);
-      setBillDetailsError(err.message || "Failed to load bill items from Supabase.");
-    } finally {
-      setLoadingBillItems(false);
-    }
-  };
-
-  // Product Search Filter
+  // Product Search & Category Filter
   const filteredProducts = products.filter((p) => {
-    if (!searchQuery.trim()) return true;
+    const matchesCat = selectedCategory === "ALL" || (p.category || "General").toLowerCase() === selectedCategory.toLowerCase();
+    if (!searchQuery.trim()) return matchesCat;
+
     const query = searchQuery.toLowerCase().trim();
     const nameMatch = p.name.toLowerCase().includes(query);
     const barcodeMatch = p.barcode ? p.barcode.toLowerCase().includes(query) : false;
     const catMatch = p.category ? p.category.toLowerCase().includes(query) : false;
-    return nameMatch || barcodeMatch || catMatch;
+
+    return matchesCat && (nameMatch || barcodeMatch || catMatch);
   });
 
   // Handle Barcode Scan / Enter Key Press
@@ -402,7 +334,7 @@ export default function BillingPage() {
   const numericAmountPaid = amountPaid !== "" ? Number(amountPaid) : grandTotal;
   const changeDue = Math.max(0, numericAmountPaid - grandTotal);
 
-  // Complete Sale & Update Supabase
+  // Complete Sale & Update Supabase via RPC
   const handleCompleteSale = async () => {
     if (cart.length === 0) {
       setErrorMsg("Please add at least one product to the bill.");
@@ -510,10 +442,10 @@ export default function BillingPage() {
       pageTitle="New Bill"
     >
       {/* POS HEADER BAR */}
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs mb-6 flex-wrap gap-4">
+      <div className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs mb-5 flex-wrap gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900">New Bill</h1>
-          <p className="text-xs font-semibold text-slate-500 mt-1">
+          <p className="text-xs font-semibold text-slate-500 mt-0.5">
             Bill No: <strong className="text-blue-600 font-mono text-sm">{currentBillNo}</strong> • Date: <strong className="text-slate-800">{new Date().toLocaleDateString()}</strong>
           </p>
         </div>
@@ -521,64 +453,83 @@ export default function BillingPage() {
         <button
           onClick={handleNewBill}
           type="button"
-          className="rounded-xl bg-blue-600 px-5 py-3 font-extrabold text-white hover:bg-blue-700 shadow-md transition cursor-pointer text-xs flex items-center gap-2 min-h-[44px]"
+          className="rounded-xl bg-blue-600 px-5 py-2.5 font-extrabold text-white hover:bg-blue-700 shadow-md transition cursor-pointer text-xs flex items-center gap-2 min-h-[44px]"
         >
           <RefreshCw className="w-4 h-4" /> Reset Bill
         </button>
       </div>
 
       {errorMsg && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold mb-6 flex items-center justify-between">
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold mb-4 flex items-center justify-between">
           <span>{errorMsg}</span>
           <button onClick={() => setErrorMsg("")}><X className="w-4 h-4" /></button>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl text-xs font-bold mb-6 flex items-center justify-between">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl text-xs font-bold mb-4 flex items-center justify-between">
           <span>{successMsg}</span>
           <button onClick={() => setSuccessMsg("")}><X className="w-4 h-4" /></button>
         </div>
       )}
 
-      {/* TWO COLUMN POS LAYOUT */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* TWO COLUMN POS LAYOUT (Optimized for Laptops & Mobile) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-        {/* LEFT COLUMN: SEARCH & PRODUCTS */}
+        {/* LEFT COLUMN: PRODUCT CATALOG & SEARCH */}
         <div className="lg:col-span-7 space-y-4">
-          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Product Search</h3>
-              <span className="text-[11px] font-bold text-slate-400">{filteredProducts.length} products available</span>
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Product Catalog</h3>
+              <span className="text-[11px] font-bold text-slate-400">{filteredProducts.length} items available</span>
             </div>
 
-            {/* SEARCH INPUT */}
+            {/* SEARCH INPUT & BARCODE */}
             <div className="relative w-full">
               <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="🔍 Search product name / barcode"
+                placeholder="🔍 Search product name or scan barcode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
-                className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:border-blue-600 focus:bg-white transition h-11"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:border-blue-600 focus:bg-white transition h-11"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
 
-            {/* PRODUCT CARDS LIST */}
-            <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+            {/* CATEGORY FILTER PILLS */}
+            {categoriesList.length > 1 && (
+              <div className="flex gap-1.5 overflow-x-auto pb-1 max-w-full">
+                {categoriesList.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition shrink-0 cursor-pointer ${
+                      selectedCategory === cat
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* COMPACT SCROLLABLE PRODUCT LIST */}
+            <div className="space-y-2 max-h-[calc(100vh-280px)] min-h-[380px] overflow-y-auto pr-1">
               {loading ? (
-                <div className="p-12 text-center text-xs text-slate-400">Loading products...</div>
+                <div className="p-12 text-center text-xs text-slate-400">Loading product catalog...</div>
               ) : filteredProducts.length === 0 ? (
                 <div className="p-12 bg-slate-50 rounded-2xl border border-dashed text-center text-xs text-slate-400 space-y-2">
                   <Package className="w-8 h-8 text-slate-300 mx-auto" />
@@ -588,41 +539,50 @@ export default function BillingPage() {
                 filteredProducts.map((p) => {
                   const stockQty = Number(p.stock_quantity || 0);
                   const isOut = stockQty <= 0;
+                  const formattedPrice = Number(p.selling_price || 0).toFixed(2);
+                  const unitStr = p.unit || "pcs";
 
                   return (
                     <div
                       key={p.id}
-                      className="p-3.5 bg-slate-50 hover:bg-blue-50/50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs transition group"
+                      className="p-3 bg-slate-50 hover:bg-blue-50/50 rounded-2xl border border-slate-100/80 flex items-center justify-between text-xs transition group"
                     >
+                      {/* Left: Product Name & Category */}
                       <div className="flex items-center gap-3 min-w-0 flex-1 pr-3">
                         {p.image_url ? (
-                          <img src={p.image_url} alt={p.name} className="w-10 h-10 rounded-xl object-cover shrink-0 border" />
+                          <img src={p.image_url} alt={p.name} className="w-10 h-10 rounded-xl object-cover shrink-0 border border-slate-200" />
                         ) : (
                           <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0">
                             📦
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-extrabold text-slate-900 group-hover:text-blue-600 transition truncate">{p.name}</h4>
-                          <div className="flex items-center gap-3 mt-0.5 text-[11px]">
-                            <span className="font-black text-emerald-600">₹{p.selling_price}</span>
-                            <span className={`font-bold ${isOut ? "text-rose-600" : stockQty <= Number(p.minimum_stock || 10) ? "text-amber-600" : "text-slate-500"}`}>
-                              Stock: {stockQty} {p.unit}
-                            </span>
-                          </div>
+                          <h4 className="font-extrabold text-slate-900 group-hover:text-blue-600 transition truncate text-xs sm:text-sm">{p.name}</h4>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{p.category || "General"}</span>
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => addToCart(p)}
-                        disabled={isOut}
-                        className={`px-4 py-2 text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-1 min-h-[38px] ${
-                          isOut ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
-                        }`}
-                      >
-                        <Plus className="w-3.5 h-3.5" /> ADD
-                      </button>
+                      {/* Middle: Price & Stock Columns */}
+                      <div className="flex items-center gap-4 shrink-0 px-2 text-right sm:text-left">
+                        <div className="text-right">
+                          <span className="block font-black text-emerald-600 text-xs sm:text-sm">₹{formattedPrice}</span>
+                          <span className={`block font-bold text-[10px] ${isOut ? "text-rose-600" : stockQty <= Number(p.minimum_stock || 10) ? "text-amber-600" : "text-slate-500"}`}>
+                            Stock: {stockQty} {unitStr}
+                          </span>
+                        </div>
+
+                        {/* Right: Add Button */}
+                        <button
+                          type="button"
+                          onClick={() => addToCart(p)}
+                          disabled={isOut}
+                          className={`px-3.5 py-2 text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-1 min-h-[38px] ${
+                            isOut ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                          }`}
+                        >
+                          <Plus className="w-3.5 h-3.5" /> ADD
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -631,21 +591,23 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: CURRENT BILL CART & SUMMARY */}
-        <div className="lg:col-span-5 space-y-4">
-          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+        {/* RIGHT COLUMN: STICKY CURRENT BILL PANEL */}
+        <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-6">
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-md space-y-4">
             <div className="pb-3 border-b border-slate-100 space-y-3">
               <div className="flex justify-between items-center">
-                <h3 className="text-base font-black text-slate-900">Current Bill</h3>
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <ReceiptText className="w-5 h-5 text-blue-600" /> Current Bill
+                </h3>
                 <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-extrabold text-[10px] rounded-full uppercase">
                   {cart.length} Item(s)
                 </span>
               </div>
 
               {/* CUSTOMER SELECTOR */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <div className="flex justify-between items-center">
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase">Customer</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase">Customer</label>
                   <button
                     type="button"
                     onClick={() => setAddCustomerModalOpen(true)}
@@ -671,21 +633,21 @@ export default function BillingPage() {
 
             {/* CART ITEMS LIST */}
             {cart.length === 0 ? (
-              <div className="p-10 text-center space-y-2 border border-dashed border-slate-200 rounded-2xl">
+              <div className="p-8 text-center space-y-2 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                 <ShoppingCart className="w-8 h-8 text-slate-300 mx-auto" />
-                <h4 className="text-xs font-bold text-slate-800">Cart is empty</h4>
-                <p className="text-[11px] text-slate-400">Search products or scan barcode to add items.</p>
+                <h4 className="text-xs font-bold text-slate-700">Cart is empty</h4>
+                <p className="text-[11px] text-slate-400">Click + ADD on any product to build the bill.</p>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {cart.map((item) => {
                     const itemTotal = (item.product.selling_price * item.quantity).toFixed(2);
                     return (
                       <div key={item.product.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs">
                         <div className="min-w-0 flex-1 pr-2">
                           <p className="font-extrabold text-slate-900 truncate">{item.product.name}</p>
-                          <p className="text-[11px] text-emerald-600 font-bold">₹{item.product.selling_price}</p>
+                          <p className="text-[11px] text-emerald-600 font-bold">₹{Number(item.product.selling_price || 0).toFixed(2)}</p>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
@@ -722,10 +684,10 @@ export default function BillingPage() {
                   })}
                 </div>
 
-                {/* PAYMENT METHOD & TOTALS */}
+                {/* PAYMENT METHOD & TOTALS SUMMARY */}
                 <div className="space-y-3 pt-3 border-t border-slate-100 text-xs">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Payment Method</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Payment Method</label>
                     <select
                       value={paymentMethod}
                       onChange={(e) => setPaymentMethod(e.target.value)}
@@ -740,7 +702,7 @@ export default function BillingPage() {
 
                   <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2">
                     <div className="flex justify-between text-slate-300 text-xs"><span>Subtotal:</span> <span>₹{subtotal.toFixed(2)}</span></div>
-                    <div className="flex justify-between text-slate-300 text-xs"><span>Discount:</span> <span>₹{Number(discount || 0).toFixed(2)}</span></div>
+                    {discount > 0 && <div className="flex justify-between text-slate-300 text-xs"><span>Discount:</span> <span>₹{Number(discount || 0).toFixed(2)}</span></div>}
                     <div className="border-t border-slate-700 pt-2 flex justify-between text-base font-black text-emerald-400">
                       <span>Total Amount:</span> <span>₹{grandTotal.toFixed(2)}</span>
                     </div>
@@ -754,11 +716,11 @@ export default function BillingPage() {
                   >
                     {submitting ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Saving Bill...
+                        <Loader2 className="w-4 h-4 animate-spin" /> Generating Bill...
                       </>
                     ) : (
                       <>
-                        <ReceiptText className="w-4 h-4" /> Generate Bill (₹{grandTotal.toFixed(2)})
+                        <ReceiptText className="w-4 h-4" /> Complete Sale (₹{grandTotal.toFixed(2)})
                       </>
                     )}
                   </button>
