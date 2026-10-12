@@ -4,25 +4,29 @@ import { Product } from "../types";
 export async function getProducts(): Promise<Product[]> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
 
-  let businessId = user?.id;
-  if (user) {
-    const { data: memberships } = await supabase
-      .from("business_members")
-      .select("*, businesses(*)")
-      .eq("user_id", user.id);
-    if (memberships && memberships.length > 0) {
-      businessId = memberships[0].businesses?.id || user.id;
-    }
+  let activeBusinessId: string | null = null;
+  const { data: memberships } = await supabase
+    .from("business_members")
+    .select("business_id, role, businesses(*)")
+    .eq("user_id", user.id);
+
+  if (memberships && memberships.length > 0) {
+    const firstMem: any = memberships[0];
+    const joinedBiz = Array.isArray(firstMem.businesses)
+      ? firstMem.businesses[0]
+      : firstMem.businesses;
+    activeBusinessId = firstMem.business_id || joinedBiz?.id || null;
   }
 
-  let query = supabase.from("products").select("*").order("name", { ascending: true });
+  if (!activeBusinessId) return [];
 
-  if (businessId) {
-    query = query.eq("business_id", businessId);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("business_id", activeBusinessId)
+    .order("name", { ascending: true });
 
   if (error) {
     console.error("Error fetching products:", error);
@@ -35,19 +39,27 @@ export async function getProducts(): Promise<Product[]> {
 export async function addProduct(product: Omit<Product, "id" | "created_at" | "updated_at">): Promise<Product | null> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Authentication required.");
 
-  let businessId = product.business_id || user?.id;
-  if (user && !product.business_id) {
+  let activeBusinessId: string | null = product.business_id || null;
+  if (!activeBusinessId) {
     const { data: memberships } = await supabase
       .from("business_members")
-      .select("*, businesses(*)")
+      .select("business_id, role, businesses(*)")
       .eq("user_id", user.id);
+
     if (memberships && memberships.length > 0) {
-      businessId = memberships[0].businesses?.id || user.id;
+      const firstMem: any = memberships[0];
+      const joinedBiz = Array.isArray(firstMem.businesses)
+        ? firstMem.businesses[0]
+        : firstMem.businesses;
+      activeBusinessId = firstMem.business_id || joinedBiz?.id || null;
     }
   }
 
-  const activeBusinessId = businessId || "00000000-0000-0000-0000-000000000000";
+  if (!activeBusinessId) {
+    throw new Error("No active business workspace found. Please select a valid business.");
+  }
 
   const { data, error } = await supabase
     .from("products")

@@ -35,17 +35,27 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      let businessId = null;
-      if (user) {
-        const { data: memberships } = await supabase
-          .from("business_members")
-          .select("*, businesses(*)")
-          .eq("user_id", user.id);
-        if (memberships && memberships.length > 0) {
-          businessId = memberships[0].businesses?.id;
-        }
+      if (!user) {
+        throw new Error("User authentication required to save product.");
       }
-      const activeBusinessId = businessId || user?.id || "00000000-0000-0000-0000-000000000000";
+
+      let activeBusinessId: string | null = null;
+      const { data: memberships } = await supabase
+        .from("business_members")
+        .select("business_id, role, businesses(*)")
+        .eq("user_id", user.id);
+
+      if (memberships && memberships.length > 0) {
+        const firstMem: any = memberships[0];
+        const joinedBiz = Array.isArray(firstMem.businesses)
+          ? firstMem.businesses[0]
+          : firstMem.businesses;
+        activeBusinessId = firstMem.business_id || joinedBiz?.id || null;
+      }
+
+      if (!activeBusinessId) {
+        throw new Error("No active business workspace found. Please select or join a valid business before adding products.");
+      }
 
       const payload = {
         name: name.trim(),
