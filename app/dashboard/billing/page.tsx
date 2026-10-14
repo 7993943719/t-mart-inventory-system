@@ -17,8 +17,12 @@ import {
   RefreshCw,
   Package,
   Loader2,
-  UserCheck,
-  Tag,
+  Printer,
+  CheckCircle2,
+  Building,
+  User,
+  Phone,
+  UserPlus,
 } from "lucide-react";
 
 interface CartItem {
@@ -69,16 +73,23 @@ export default function BillingPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("Walk-in Customer");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [discount, setDiscount] = useState<number>(0);
-  const [taxRate, setTaxRate] = useState<number>(0);
   const [amountPaid, setAmountPaid] = useState<string>("");
 
-  // Inline Add Customer Modal State
+  // GST Billing Settings State (Based on business settings)
+  const [gstEnabled, setGstEnabled] = useState(false);
+  const [taxRate, setTaxRate] = useState<number>(5); // default 5% GST when enabled
+
+  // Inline Add Customer Modal State (Name, Phone, Address, City, Email, GSTIN)
   const [addCustomerModalOpen, setAddCustomerModalOpen] = useState(false);
   const [newCustName, setNewCustName] = useState("");
   const [newCustPhone, setNewCustPhone] = useState("");
   const [newCustAddress, setNewCustAddress] = useState("");
+  const [newCustCity, setNewCustCity] = useState("");
+  const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustGstin, setNewCustGstin] = useState("");
   const [savingNewCustomer, setSavingNewCustomer] = useState(false);
 
   // Bill & Print State
@@ -108,8 +119,12 @@ export default function BillingPage() {
         .eq("user_id", user.id);
 
       if (memberships && memberships.length > 0) {
-        setBusiness(memberships[0].businesses);
+        const biz = memberships[0].businesses;
+        setBusiness(biz);
         setRole(memberships[0].role || "OWNER");
+        if (biz?.gst_number) {
+          setGstEnabled(true);
+        }
       }
 
       const { data: prof } = await supabase
@@ -148,6 +163,16 @@ export default function BillingPage() {
   // Categories list
   const categoriesList = ["ALL", ...Array.from(new Set(products.map((p) => p.category || "General")))];
 
+  // Filtered Customers List (Searching by Name or Phone)
+  const filteredCustomers = customersList.filter((c) => {
+    if (!customerSearchQuery.trim()) return true;
+    const q = customerSearchQuery.toLowerCase().trim();
+    return (
+      (c.name || "").toLowerCase().includes(q) ||
+      (c.phone || "").includes(q)
+    );
+  });
+
   // Handle Customer Selection
   const handleSelectCustomer = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -184,6 +209,9 @@ export default function BillingPage() {
             name: newCustName.trim(),
             phone: newCustPhone.trim(),
             address: newCustAddress.trim() || null,
+            city: newCustCity.trim() || null,
+            email: newCustEmail.trim() || null,
+            gstin: newCustGstin.trim() || null,
             customer_type: "Regular Customer",
             created_at: new Date().toISOString(),
           },
@@ -200,6 +228,9 @@ export default function BillingPage() {
       setNewCustName("");
       setNewCustPhone("");
       setNewCustAddress("");
+      setNewCustCity("");
+      setNewCustEmail("");
+      setNewCustGstin("");
       setSuccessMsg("New customer added & selected!");
       setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err: any) {
@@ -222,6 +253,9 @@ export default function BillingPage() {
 
     return matchesCat && (nameMatch || barcodeMatch || catMatch);
   });
+
+  // Display initial compact list (10 items) when search query is empty, full catalog when searching
+  const displayedProducts = searchQuery.trim() ? filteredProducts : filteredProducts.slice(0, 10);
 
   // Handle Barcode Scan / Enter Key Press
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -313,6 +347,7 @@ export default function BillingPage() {
     setAmountPaid("");
     setSelectedCustomerId(null);
     setCustomerName("Walk-in Customer");
+    setCustomerSearchQuery("");
     setPaymentMethod("CASH");
     setErrorMsg("");
     setSuccessMsg("");
@@ -326,13 +361,25 @@ export default function BillingPage() {
     }
   };
 
-  // Bill Calculations
+  // Bill Calculations & GST Tax
   const subtotal = cart.reduce((sum, item) => sum + Number(item.product.selling_price || 0) * item.quantity, 0);
-  const tax = Math.max(0, (subtotal - Number(discount || 0)) * (taxRate / 100));
+  const tax = gstEnabled ? Math.max(0, (subtotal - Number(discount || 0)) * (taxRate / 100)) : 0;
   const grandTotal = Math.max(0, subtotal - Number(discount || 0) + tax);
 
-  const numericAmountPaid = amountPaid !== "" ? Number(amountPaid) : grandTotal;
-  const changeDue = Math.max(0, numericAmountPaid - grandTotal);
+  const numericAmountPaid = amountPaid !== ""
+    ? Number(amountPaid)
+    : paymentMethod === "CREDIT" ? 0 : grandTotal;
+
+  const balanceDue = Math.max(0, Number((grandTotal - numericAmountPaid).toFixed(2)));
+
+  let paymentStatus: "PAID" | "PARTIALLY PAID" | "UNPAID" = "PAID";
+  if (grandTotal === 0 || numericAmountPaid >= grandTotal) {
+    paymentStatus = "PAID";
+  } else if (numericAmountPaid > 0) {
+    paymentStatus = "PARTIALLY PAID";
+  } else {
+    paymentStatus = "UNPAID";
+  }
 
   // Complete Sale & Update Supabase via RPC
   const handleCompleteSale = async () => {
@@ -381,6 +428,7 @@ export default function BillingPage() {
         p_discount: Number(discount || 0),
         p_total_amount: Number(grandTotal.toFixed(2)),
         p_items: itemsPayload,
+        p_amount_paid: numericAmountPaid,
       });
 
       if (rpcError) {
@@ -408,11 +456,14 @@ export default function BillingPage() {
         payment_method: paymentMethod,
         subtotal: subtotal.toFixed(2),
         discount: Number(discount || 0).toFixed(2),
+        tax: tax.toFixed(2),
         grand_total: grandTotal.toFixed(2),
         amount_paid: numericAmountPaid.toFixed(2),
-        change_due: changeDue.toFixed(2),
+        balance_due: balanceDue.toFixed(2),
+        payment_status: paymentStatus,
         items: saleItemsList,
         business_name: business?.name || "TWEB",
+        business_gstin: business?.gst_number || "",
       };
 
       setLastSaleReceipt(receiptData);
@@ -432,6 +483,78 @@ export default function BillingPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Print Invoice Function
+  const handlePrintInvoice = () => {
+    if (!lastSaleReceipt) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice - ${lastSaleReceipt.invoice_number}</title>
+          <style>
+            body { font-family: 'Courier New', monospace; font-size: 12px; padding: 20px; max-width: 320px; margin: 0 auto; }
+            .center { text-align: center; }
+            .bold { font-weight: bold; }
+            .divider { border-top: 1px dashed #000; margin: 10px 0; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th, td { text-align: left; padding: 3px 0; font-size: 11px; }
+            .right { text-align: right; }
+            .flex { display: flex; justify-content: space-between; margin: 2px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <h2 style="margin:0;">${lastSaleReceipt.business_name}</h2>
+            ${lastSaleReceipt.business_gstin ? `<p style="margin:2px 0;">GSTIN: ${lastSaleReceipt.business_gstin}</p>` : ""}
+            <p style="margin:2px 0;">Official POS Invoice</p>
+          </div>
+          <div class="divider"></div>
+          <div class="flex"><span>Invoice No:</span> <span class="bold">${lastSaleReceipt.invoice_number}</span></div>
+          <div class="flex"><span>Date:</span> <span>${lastSaleReceipt.date}</span></div>
+          <div class="flex"><span>Customer:</span> <span>${lastSaleReceipt.customer_name}</span></div>
+          <div class="flex"><span>Payment:</span> <span>${lastSaleReceipt.payment_method}</span></div>
+          <div class="divider"></div>
+          <table>
+            <thead>
+              <tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Total</th></tr>
+            </thead>
+            <tbody>
+              ${(lastSaleReceipt.items || []).map((i: any) => `
+                <tr>
+                  <td>${i.product_name}</td>
+                  <td class="right">${i.quantity}</td>
+                  <td class="right">₹${i.price}</td>
+                  <td class="right">₹${i.total}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+          <div class="divider"></div>
+          <div class="flex"><span>Subtotal:</span> <span>₹${lastSaleReceipt.subtotal}</span></div>
+          ${Number(lastSaleReceipt.tax) > 0 ? `<div class="flex"><span>GST (${taxRate}%):</span> <span>₹${lastSaleReceipt.tax}</span></div>` : ""}
+          <div class="flex"><span>Discount:</span> <span>₹${lastSaleReceipt.discount}</span></div>
+          <div class="flex bold" style="font-size:14px;"><span>GRAND TOTAL:</span> <span>₹${lastSaleReceipt.grand_total}</span></div>
+          <div class="divider"></div>
+          <div class="flex"><span>Amount Paid:</span> <span>₹${lastSaleReceipt.amount_paid}</span></div>
+          <div class="flex"><span>Balance Due:</span> <span>₹${lastSaleReceipt.balance_due}</span></div>
+          <div class="flex"><span>Payment Status:</span> <span class="bold">${lastSaleReceipt.payment_status}</span></div>
+          <div class="divider"></div>
+          <div class="center" style="margin-top:15px;">
+            <p style="margin:0;">Thank you for shopping with us!</p>
+            <p style="margin:2px 0;">Visit Again</p>
+          </div>
+          <script>window.onload = function() { window.print(); window.close(); }</script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   return (
@@ -473,14 +596,87 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* TWO COLUMN POS LAYOUT (Optimized for Laptops & Mobile) */}
-      <div className="pos-billing-layout">
+      {/* CUSTOMER DETAILS SECTION (Placed FIRST on Mobile/Android, Top Banner) */}
+      <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs mb-5 space-y-3">
+        <div className="flex justify-between items-center flex-wrap gap-2">
+          <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <User className="w-4 h-4 text-blue-600" /> Customer Details
+          </h3>
+          <button
+            type="button"
+            onClick={() => setAddCustomerModalOpen(true)}
+            className="text-xs font-extrabold text-blue-600 hover:text-blue-700 cursor-pointer flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100"
+          >
+            <UserPlus className="w-3.5 h-3.5" /> + Add New Customer
+          </button>
+        </div>
 
-        {/* LEFT COLUMN: PRODUCT CATALOG & SEARCH */}
-        <div className="pos-catalog-column space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Customer Search Filter */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search customer by name or phone..."
+              value={customerSearchQuery}
+              onChange={(e) => setCustomerSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-blue-600 h-11"
+            />
+            {customerSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setCustomerSearchQuery("")}
+                className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Customer Dropdown Selector */}
+          <select
+            value={selectedCustomerId || "WALK_IN"}
+            onChange={handleSelectCustomer}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-600 h-11 cursor-pointer"
+          >
+            <option value="WALK_IN">Walk-in Customer (Default)</option>
+            {filteredCustomers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.phone || "No phone"})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100 flex-wrap gap-2">
+          <span>Selected: <strong className="text-slate-900 font-extrabold">{customerName}</strong></span>
+          {/* GST Billing Toggle */}
+          <div className="flex items-center gap-2">
+            <Building className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-xs font-bold text-slate-700">GST Billing</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={gstEnabled}
+                onChange={(e) => setGstEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* POS LAYOUT: PRODUCTS & CART */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        {/* PRODUCTS SECTION (Below Customer Details on Mobile) */}
+        <div className="lg:col-span-7 space-y-4">
           <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Product Catalog</h3>
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Package className="w-4 h-4 text-blue-600" /> Product Catalogue
+              </h3>
               <span className="text-[11px] font-bold text-slate-400">{filteredProducts.length} items available</span>
             </div>
 
@@ -490,7 +686,7 @@ export default function BillingPage() {
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="🔍 Search product name or scan barcode..."
+                placeholder="Search product name or scan barcode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
@@ -526,17 +722,17 @@ export default function BillingPage() {
               </div>
             )}
 
-            {/* COMPACT SCROLLABLE PRODUCT LIST */}
-            <div className="space-y-2 max-h-[calc(100vh-280px)] min-h-[380px] overflow-y-auto pr-1">
+            {/* COMPACT PRODUCT LIST (Initially ~10 items, full list when searching) */}
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
               {loading ? (
                 <div className="p-12 text-center text-xs text-slate-400">Loading product catalog...</div>
-              ) : filteredProducts.length === 0 ? (
+              ) : displayedProducts.length === 0 ? (
                 <div className="p-12 bg-slate-50 rounded-2xl border border-dashed text-center text-xs text-slate-400 space-y-2">
                   <Package className="w-8 h-8 text-slate-300 mx-auto" />
                   <p className="font-bold text-slate-600">No matching products found</p>
                 </div>
               ) : (
-                filteredProducts.map((p) => {
+                displayedProducts.map((p) => {
                   const stockQty = Number(p.stock_quantity || 0);
                   const isOut = stockQty <= 0;
                   const formattedPrice = Number(p.selling_price || 0).toFixed(2);
@@ -591,44 +787,16 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: STICKY CURRENT BILL PANEL */}
-        <div className="pos-cart-column space-y-4">
+        {/* RIGHT COLUMN: CURRENT BILL / CART */}
+        <div className="lg:col-span-5 space-y-4">
           <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-md space-y-4">
-            <div className="pb-3 border-b border-slate-100 space-y-3">
-              <div className="flex justify-between items-center">
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <ReceiptText className="w-5 h-5 text-blue-600" /> Current Bill
-                </h3>
-                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-extrabold text-[10px] rounded-full uppercase">
-                  {cart.length} Item(s)
-                </span>
-              </div>
-
-              {/* CUSTOMER SELECTOR */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase">Customer</label>
-                  <button
-                    type="button"
-                    onClick={() => setAddCustomerModalOpen(true)}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer flex items-center gap-1"
-                  >
-                    + Add New Customer
-                  </button>
-                </div>
-                <select
-                  value={selectedCustomerId || "WALK_IN"}
-                  onChange={handleSelectCustomer}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-600 h-11"
-                >
-                  <option value="WALK_IN">Walk-in Customer</option>
-                  {customersList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.phone})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="pb-3 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <ReceiptText className="w-5 h-5 text-blue-600" /> Current Bill
+              </h3>
+              <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-extrabold text-[10px] rounded-full uppercase">
+                {cart.length} Item(s)
+              </span>
             </div>
 
             {/* CART ITEMS LIST */}
@@ -684,27 +852,55 @@ export default function BillingPage() {
                   })}
                 </div>
 
-                {/* PAYMENT METHOD & TOTALS SUMMARY */}
+                {/* PAYMENT METHOD, AMOUNT PAID & STATUS SUMMARY */}
                 <div className="space-y-3 pt-3 border-t border-slate-100 text-xs">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Payment Method</label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold outline-none h-11 cursor-pointer"
-                    >
-                      <option value="CASH">CASH</option>
-                      <option value="UPI">UPI / QR</option>
-                      <option value="CARD">CARD</option>
-                      <option value="CREDIT">CREDIT / DUE</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Payment Method</label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold outline-none h-11 cursor-pointer"
+                      >
+                        <option value="CASH">CASH</option>
+                        <option value="UPI">UPI / QR</option>
+                        <option value="CARD">CARD</option>
+                        <option value="CREDIT">CREDIT / DUE</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Amount Paid (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={amountPaid}
+                        onChange={(e) => setAmountPaid(e.target.value)}
+                        placeholder={`e.g. ${grandTotal.toFixed(2)}`}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold outline-none h-11 focus:border-blue-600"
+                      />
+                    </div>
                   </div>
 
                   <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2">
                     <div className="flex justify-between text-slate-300 text-xs"><span>Subtotal:</span> <span>₹{subtotal.toFixed(2)}</span></div>
+                    {gstEnabled && <div className="flex justify-between text-slate-300 text-xs"><span>GST ({taxRate}%):</span> <span>₹{tax.toFixed(2)}</span></div>}
                     {discount > 0 && <div className="flex justify-between text-slate-300 text-xs"><span>Discount:</span> <span>₹{Number(discount || 0).toFixed(2)}</span></div>}
                     <div className="border-t border-slate-700 pt-2 flex justify-between text-base font-black text-emerald-400">
                       <span>Total Amount:</span> <span>₹{grandTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-300 text-xs pt-1"><span>Amount Paid:</span> <span>₹{numericAmountPaid.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-slate-300 text-xs"><span>Balance Due:</span> <span className={balanceDue > 0 ? "text-amber-400 font-bold" : "text-slate-300"}>₹{balanceDue.toFixed(2)}</span></div>
+                    <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
+                      <span>Status:</span>
+                      <span className={`px-2.5 py-0.5 font-black text-[10px] uppercase rounded-full ${
+                        paymentStatus === "PAID" ? "bg-emerald-500/20 text-emerald-400" :
+                        paymentStatus === "PARTIALLY PAID" ? "bg-amber-500/20 text-amber-400" :
+                        "bg-rose-500/20 text-rose-400"
+                      }`}>
+                        {paymentStatus}
+                      </span>
                     </div>
                   </div>
 
@@ -731,65 +927,173 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* INLINE ADD CUSTOMER MODAL */}
+      {/* COMPLETED INVOICE RECEIPT MODAL */}
+      {saleCompletedModal && lastSaleReceipt && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-[calc(100%-24px)] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto text-xs">
+            {/* TOP CUSTOMER DETAILS */}
+            <div className="flex justify-between items-start border-b pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-emerald-600">
+                  <CheckCircle2 className="w-5 h-5" />
+                  <h3 className="text-base font-black text-slate-900">Sale Completed</h3>
+                </div>
+                <p className="text-[11px] font-mono text-blue-600 font-bold mt-1">Invoice: #{lastSaleReceipt.invoice_number}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Customer: <strong className="text-slate-900">{lastSaleReceipt.customer_name}</strong></p>
+                <p className="text-[10px] text-slate-400">{lastSaleReceipt.date}</p>
+              </div>
+
+              <span className={`px-3 py-1 font-black text-[10px] uppercase rounded-full border ${
+                lastSaleReceipt.payment_status === "PAID" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                lastSaleReceipt.payment_status === "PARTIALLY PAID" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                "bg-rose-50 text-rose-700 border-rose-200"
+              }`}>
+                {lastSaleReceipt.payment_status}
+              </span>
+            </div>
+
+            {/* PRODUCT ROWS TABLE */}
+            <div className="space-y-2">
+              <h4 className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wider">Purchased Items</h4>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {(lastSaleReceipt.items || []).map((item: any, idx: number) => (
+                  <div key={idx} className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
+                    <div>
+                      <p className="font-extrabold text-slate-900">{item.product_name}</p>
+                      <p className="text-[10px] text-slate-400">{item.quantity} {item.unit || "pcs"} × ₹{item.price}</p>
+                    </div>
+                    <span className="font-black text-slate-900">₹{item.total}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* PAYMENT SUMMARY */}
+            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-1.5 font-bold">
+              <div className="flex justify-between text-slate-300 text-[11px]"><span>Payment Method:</span> <span className="uppercase">{lastSaleReceipt.payment_method}</span></div>
+              <div className="flex justify-between text-slate-300 text-[11px]"><span>Subtotal:</span> <span>₹{lastSaleReceipt.subtotal}</span></div>
+              {Number(lastSaleReceipt.tax) > 0 && <div className="flex justify-between text-slate-300 text-[11px]"><span>GST:</span> <span>₹{lastSaleReceipt.tax}</span></div>}
+              {Number(lastSaleReceipt.discount) > 0 && <div className="flex justify-between text-slate-300 text-[11px]"><span>Discount:</span> <span>₹{lastSaleReceipt.discount}</span></div>}
+              <div className="border-t border-slate-700 pt-1.5 flex justify-between text-sm font-black text-emerald-400"><span>Grand Total:</span> <span>₹{lastSaleReceipt.grand_total}</span></div>
+              <div className="flex justify-between text-slate-300 text-[11px] pt-1 border-t border-slate-800"><span>Amount Paid:</span> <span>₹{lastSaleReceipt.amount_paid}</span></div>
+              <div className="flex justify-between text-slate-300 text-[11px]"><span>Balance Due:</span> <span className={Number(lastSaleReceipt.balance_due) > 0 ? "text-amber-400 font-bold" : "text-slate-300"}>₹{lastSaleReceipt.balance_due}</span></div>
+            </div>
+
+            {/* ACTION BUTTONS */}
+            <div className="flex gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={handlePrintInvoice}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
+              >
+                <Printer className="w-4 h-4" /> Print Invoice
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNewBill}
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xs transition shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-4 h-4" /> New Bill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INLINE ADD NEW CUSTOMER MODAL */}
       {addCustomerModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-xs">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 text-xs text-slate-900">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="text-base font-black text-slate-900">Add Customer Profile</h3>
+              <h3 className="text-base font-black text-slate-900">+ Add New Customer</h3>
               <button onClick={() => setAddCustomerModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
 
-            <form onSubmit={handleSaveNewCustomerInline} className="space-y-3">
+            <form onSubmit={handleSaveNewCustomerInline} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Customer Name *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Customer Name *</label>
                 <input
                   type="text"
                   required
                   value={newCustName}
                   onChange={(e) => setNewCustName(e.target.value)}
-                  placeholder="e.g. Ramesh Kumar"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:border-blue-600 h-11"
+                  placeholder="e.g. Rahul Sharma"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-blue-600 h-11"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile Number *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mobile Phone *</label>
                 <input
                   type="tel"
                   required
                   value={newCustPhone}
                   onChange={(e) => setNewCustPhone(e.target.value)}
                   placeholder="e.g. 9876543210"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:border-blue-600 h-11"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-blue-600 h-11 font-mono"
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={newCustCity}
+                    onChange={(e) => setNewCustCity(e.target.value)}
+                    placeholder="e.g. Mumbai"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-blue-600 h-11"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newCustEmail}
+                    onChange={(e) => setNewCustEmail(e.target.value)}
+                    placeholder="e.g. rahul@gmail.com"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-blue-600 h-11"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Address / City</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Street Address</label>
                 <input
                   type="text"
                   value={newCustAddress}
                   onChange={(e) => setNewCustAddress(e.target.value)}
-                  placeholder="Optional"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold outline-none focus:border-blue-600 h-11"
+                  placeholder="e.g. Shop #12, Main Market"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-blue-600 h-11"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">GSTIN (Optional)</label>
+                <input
+                  type="text"
+                  value={newCustGstin}
+                  onChange={(e) => setNewCustGstin(e.target.value)}
+                  placeholder="e.g. 27AAAAA0000A1Z5"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold outline-none focus:border-blue-600 h-11 font-mono"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t">
                 <button
                   type="button"
                   onClick={() => setAddCustomerModalOpen(false)}
-                  className="flex-1 py-2.5 border rounded-xl font-bold text-slate-600 hover:bg-slate-50 cursor-pointer min-h-[44px]"
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer min-h-[44px]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingNewCustomer}
-                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black shadow-md cursor-pointer min-h-[44px]"
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-black rounded-xl shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
                 >
-                  {savingNewCustomer ? "Saving..." : "Save Customer"}
+                  {savingNewCustomer ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Customer"}
                 </button>
               </div>
             </form>
