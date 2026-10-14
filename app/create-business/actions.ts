@@ -13,78 +13,34 @@ export async function createBusiness(formData: FormData) {
   }
 
   const name = String(formData.get("name") ?? "").trim();
-  const businessType = String(formData.get("business_type") ?? "Grocery").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const businessType = String(formData.get("business_type") ?? "Supermarket").trim();
   const billingCycle = String(formData.get("billing_cycle") ?? "monthly").trim().toLowerCase();
 
   if (!name) {
     redirect(`/create-business?error=${encodeURIComponent("Business name is required.")}`);
   }
 
-  if (billingCycle !== "monthly" && billingCycle !== "yearly") {
-    redirect(`/create-business?error=${encodeURIComponent("Invalid billing cycle selected.")}`);
+  if (!phone || phone.length < 10) {
+    redirect(`/create-business?error=${encodeURIComponent("A valid owner mobile phone number is required.")}`);
   }
 
-  const amount = billingCycle === "yearly" ? 5000 : 450;
+  // Invoke verified live production RPC using exact supported parameters:
+  // p_business_name, p_business_type, p_billing_cycle
+  const { data: rpcData, error: rpcError } = await supabase.rpc("create_business_with_trial", {
+    p_business_name: name,
+    p_business_type: businessType,
+    p_billing_cycle: billingCycle === "yearly" ? "yearly" : "monthly",
+  });
 
-  // 1. Create business using only allowed columns (no updated_at)
-  const { data: biz, error: bizError } = await supabase
-    .from("businesses")
-    .insert([
-      {
-        name,
-        business_type: businessType,
-        country: "India",
-        owner_id: user.id,
-        created_at: new Date().toISOString(),
-      },
-    ])
-    .select()
-    .single();
-
-  if (bizError || !biz) {
-    redirect(`/create-business?error=${encodeURIComponent(bizError?.message || "Failed to create business")}`);
-  }
-
-  // 2. Create business_members
-  const { error: memError } = await supabase.from("business_members").insert([
-    {
-      business_id: biz.id,
-      user_id: user.id,
-      role: "owner",
-      created_at: new Date().toISOString(),
-    },
-  ]);
-
-  if (memError) {
-    await supabase.from("businesses").delete().eq("id", biz.id);
-    redirect(`/create-business?error=${encodeURIComponent(memError.message || "Failed to create business membership")}`);
-  }
-
-  // 3. Create subscription
-  const now = new Date();
-  const trialEnds = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-
-  const { error: subError } = await supabase.from("subscriptions").insert([
-    {
-      business_id: biz.id,
-      plan: "business",
-      status: "trial",
-      billing_cycle: billingCycle,
-      amount: amount,
-      trial_ends_at: trialEnds.toISOString(),
-      current_period_start: now.toISOString(),
-      current_period_end: trialEnds.toISOString(),
-      created_at: now.toISOString(),
-    },
-  ]);
-
-  if (subError) {
-    await supabase.from("business_members").delete().eq("business_id", biz.id);
-    await supabase.from("businesses").delete().eq("id", biz.id);
-    redirect(`/create-business?error=${encodeURIComponent(subError.message || "Failed to create trial subscription")}`);
+  if (rpcError || !rpcData || rpcData.success === false || !rpcData.business_id) {
+    const errorMsg = rpcError?.message || rpcData?.error || "Failed to create business and trial subscription";
+    console.error("create_business_with_trial RPC error:", rpcError || rpcData);
+    redirect(`/create-business?error=${encodeURIComponent(errorMsg)}`);
   }
 
   revalidatePath("/", "layout");
   revalidatePath("/dashboard");
-  redirect("/dashboard?success=business_created");
+  // Redirect to post-signup Plan Selection page
+  redirect("/select-plan");
 }
