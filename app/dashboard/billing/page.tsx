@@ -27,6 +27,11 @@ import {
   ChevronDown,
   Barcode,
   Scan,
+  Calendar,
+  Filter,
+  DollarSign,
+  Clock,
+  CheckCircle,
 } from "lucide-react";
 
 interface CartItem {
@@ -64,6 +69,42 @@ async function getNextInvoiceNumber(supabase: any) {
   return `BILL-${String(nextNumber).padStart(4, "0")}`;
 }
 
+const getAsiaKolkataBounds = (period: string, customStart?: string, customEnd?: string) => {
+  const now = new Date();
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
+  const [year, month, day] = todayStr.split("-").map(Number);
+
+  const istStartOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - (5 * 60 + 30) * 60 * 1000);
+
+  if (period === "TODAY") {
+    const istEndOfDay = new Date(istStartOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+    return { start: istStartOfDay, end: istEndOfDay };
+  }
+  if (period === "YESTERDAY") {
+    const yesterdayStart = new Date(istStartOfDay.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayEnd = new Date(istStartOfDay.getTime() - 1);
+    return { start: yesterdayStart, end: yesterdayEnd };
+  }
+  if (period === "THIS_MONTH") {
+    const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0) - (5 * 60 + 30) * 60 * 1000);
+    const nextMonthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0) - (5 * 60 + 30) * 60 * 1000 - 1);
+    return { start: monthStart, end: nextMonthStart };
+  }
+  if (period === "THIS_YEAR") {
+    const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0) - (5 * 60 + 30) * 60 * 1000);
+    const yearEnd = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0) - (5 * 60 + 30) * 60 * 1000 - 1);
+    return { start: yearStart, end: yearEnd };
+  }
+  if (period === "CUSTOM" && customStart && customEnd) {
+    const [sY, sM, sD] = customStart.split("-").map(Number);
+    const [eY, eM, eD] = customEnd.split("-").map(Number);
+    const start = new Date(Date.UTC(sY, sM - 1, sD, 0, 0, 0) - (5 * 60 + 30) * 60 * 1000);
+    const end = new Date(Date.UTC(eY, eM - 1, eD, 23, 59, 59, 999) - (5 * 60 + 30) * 60 * 1000);
+    return { start, end };
+  }
+  return { start: null, end: null };
+};
+
 export default function BillingPage() {
   const [supabase] = useState(() => createClient());
   const [products, setProducts] = useState<Product[]>([]);
@@ -82,6 +123,12 @@ export default function BillingPage() {
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [discount, setDiscount] = useState<number>(0);
   const [amountPaid, setAmountPaid] = useState<string>("");
+
+  // Filters State
+  const [dateFilterPeriod, setDateFilterPeriod] = useState("TODAY");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [statusFilterTab, setStatusFilterTab] = useState("ALL"); // ALL, UNPAID, PARTIALLY PAID, PAID
 
   // GST Billing Settings State (Based on business settings)
   const [gstEnabled, setGstEnabled] = useState(false);
@@ -144,7 +191,7 @@ export default function BillingPage() {
 
       const [prodsRes, salesRes, custRes] = await Promise.all([
         supabase.from("products").select("*").order("name", { ascending: true }),
-        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(20),
+        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(300),
         supabase.from("customers").select("*").order("name", { ascending: true }),
       ]);
 
@@ -450,9 +497,9 @@ export default function BillingPage() {
       const saleItemsList = consolidatedCart.map((item) => ({
         product_name: item.product.name,
         unit: item.product.unit,
-        price: item.product.selling_price,
+        price: Number(item.product.selling_price || 0),
         quantity: item.quantity,
-        total: Number((item.product.selling_price * item.quantity).toFixed(2)),
+        total: Number((Number(item.product.selling_price || 0) * item.quantity).toFixed(2)),
       }));
 
       const receiptData = {
@@ -573,6 +620,47 @@ export default function BillingPage() {
     printWindow.document.close();
   };
 
+  // Calculate metrics for summary cards based on date filter
+  const { start: dateStart, end: dateEnd } = getAsiaKolkataBounds(dateFilterPeriod, customStartDate, customEndDate);
+
+  const dateFilteredSales = sales.filter((s) => {
+    const createdAt = new Date(s.created_at);
+    if (dateStart && createdAt < dateStart) return false;
+    if (dateEnd && createdAt > dateEnd) return false;
+    return true;
+  });
+
+  let unpaidCount = 0;
+  let unpaidAmount = 0;
+  let paidCount = 0;
+  let paidAmount = 0;
+  let partialCount = 0;
+  let partialAmount = 0;
+
+  dateFilteredSales.forEach((s) => {
+    const pStatus = (s.payment_status || "").toUpperCase();
+    const pMethod = (s.payment_method || "").toUpperCase();
+    const total = Number(s.total_amount || s.total || 0);
+    const balance = Number(s.balance_due !== undefined && s.balance_due !== null ? s.balance_due : (pMethod.includes("CREDIT") || pMethod.includes("DUE") ? total : 0));
+    const paid = Number(s.amount_paid !== undefined && s.amount_paid !== null ? s.amount_paid : (pMethod.includes("CREDIT") || pMethod.includes("DUE") ? 0 : total));
+
+    let eff = pStatus;
+    if (!eff) {
+      eff = (pMethod.includes("CREDIT") || pMethod.includes("DUE")) ? "UNPAID" : "PAID";
+    }
+
+    if (eff === "UNPAID") {
+      unpaidCount++;
+      unpaidAmount += balance > 0 ? balance : total;
+    } else if (eff === "PARTIALLY PAID") {
+      partialCount++;
+      partialAmount += balance > 0 ? balance : total / 2;
+    } else {
+      paidCount++;
+      paidAmount += paid > 0 ? paid : total;
+    }
+  });
+
   // Render Cart Content (Reusable for desktop sidebar and mobile bottom sheet)
   const renderCartContent = () => (
     <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-md space-y-3">
@@ -670,7 +758,7 @@ export default function BillingPage() {
 
             <div className="p-3 bg-slate-900 text-white rounded-xl space-y-1">
               <div className="flex justify-between text-slate-300 text-[11px]"><span>Subtotal:</span> <span>₹{subtotal.toFixed(2)}</span></div>
-              {gstEnabled && <div className="flex justify-between text-slate-300 text-[11px]"><span>GST ({taxRate}%):</span> <span>₹{tax.toFixed(2)}</span></div>}
+              {gstEnabled && <div className="flex justify-between text-slate-300 text-[11px]"><span>GST (${taxRate}%):</span> <span>₹{tax.toFixed(2)}</span></div>}
               {discount > 0 && <div className="flex justify-between text-slate-300 text-[11px]"><span>Discount:</span> <span>₹{Number(discount || 0).toFixed(2)}</span></div>}
               <div className="border-t border-slate-700 pt-1 flex justify-between text-xs sm:text-sm font-black text-emerald-400">
                 <span>Total Amount:</span> <span>₹{grandTotal.toFixed(2)}</span>
@@ -750,7 +838,103 @@ export default function BillingPage() {
         </div>
       )}
 
-      {/* 1. CUSTOMER DETAILS SECTION (Placed FIRST at the top) */}
+      {/* SUPERMARKET POS DASHBOARD SUMMARY CARDS & FILTERS */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs mb-2.5 space-y-3">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          {/* Date Period Filter */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            <span className="text-xs font-bold text-slate-700">Period:</span>
+            {["TODAY", "YESTERDAY", "THIS_MONTH", "THIS_YEAR", "CUSTOM"].map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setDateFilterPeriod(p)}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                  dateFilterPeriod === p ? "bg-blue-600 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {p === "TODAY" ? "Today" : p === "YESTERDAY" ? "Yesterday" : p === "THIS_MONTH" ? "This Month" : p === "THIS_YEAR" ? "This Year" : "Custom"}
+              </button>
+            ))}
+          </div>
+
+          {/* Payment Status Filter Tabs */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Filter className="w-4 h-4 text-blue-600" />
+            <span className="text-xs font-bold text-slate-700">Status:</span>
+            {["ALL", "UNPAID", "PARTIALLY PAID", "PAID"].map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setStatusFilterTab(st)}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black uppercase transition cursor-pointer ${
+                  statusFilterTab === st ? "bg-slate-900 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {st === "ALL" ? "All Bills" : st}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {dateFilterPeriod === "CUSTOM" && (
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+            <span className="font-bold text-slate-600">From:</span>
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold outline-none"
+            />
+            <span className="font-bold text-slate-600">To:</span>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold outline-none"
+            />
+          </div>
+        )}
+
+        {/* 3 COMPACT SUMMARY CARDS */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+          <div className="p-3 bg-rose-50/60 border border-rose-100 rounded-xl space-y-1">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-black text-rose-700 uppercase tracking-wider flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" /> Pending / Unpaid
+              </span>
+              <span className="px-2 py-0.5 bg-rose-100 text-rose-800 font-black text-[10px] rounded-full">{unpaidCount} Bills</span>
+            </div>
+            <p className="text-base font-black text-rose-900">₹{unpaidAmount.toFixed(2)}</p>
+            <p className="text-[10px] text-rose-600 font-medium">Total Outstanding Balance Due</p>
+          </div>
+
+          <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl space-y-1">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1">
+                <CheckCircle className="w-3.5 h-3.5" /> Paid Bills
+              </span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black text-[10px] rounded-full">{paidCount} Bills</span>
+            </div>
+            <p className="text-base font-black text-emerald-900">₹{paidAmount.toFixed(2)}</p>
+            <p className="text-[10px] text-emerald-600 font-medium">Total Collected Revenue</p>
+          </div>
+
+          <div className="p-3 bg-amber-50/60 border border-amber-100 rounded-xl space-y-1">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-black text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                <DollarSign className="w-3.5 h-3.5" /> Partially Paid
+              </span>
+              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-black text-[10px] rounded-full">{partialCount} Bills</span>
+            </div>
+            <p className="text-base font-black text-amber-900">₹{partialAmount.toFixed(2)}</p>
+            <p className="text-[10px] text-amber-600 font-medium">Remaining Balance Due</p>
+          </div>
+        </div>
+      </div>
+
+      {/* CUSTOMER DETAILS SECTION (Placed FIRST at the top) */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs mb-2.5 space-y-2">
         <div className="flex justify-between items-center flex-wrap gap-1.5">
           <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -821,12 +1005,12 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* 2. ADD PRODUCT SECTION (Directly below Customer Details) */}
+      {/* POS LAYOUT: PRODUCTS & CART */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pb-24 lg:pb-0">
 
         {/* PRODUCTS CATALOG COLUMN */}
         <div className="lg:col-span-7 space-y-2.5">
-          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-2.5">
             <div className="flex justify-between items-center">
               <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-blue-600" /> Add Product
@@ -834,10 +1018,10 @@ export default function BillingPage() {
               <span className="text-[10px] font-bold text-slate-400">{filteredProducts.length} items available</span>
             </div>
 
-            {/* PRODUCT SEARCH INPUT & BARCODE SCANNER BUTTON (Immediately under Products heading) */}
+            {/* PRODUCT SEARCH INPUT & BARCODE SCANNER BUTTON */}
             <div className="flex gap-2 items-center">
               <div className="relative flex-1 w-full">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400 pointer-events-none" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -845,13 +1029,13 @@ export default function BillingPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
-                  className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-blue-600 focus:bg-white transition h-10"
+                  className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-blue-600 focus:bg-white transition h-9"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -863,7 +1047,7 @@ export default function BillingPage() {
                 onClick={() => {
                   if (searchInputRef.current) searchInputRef.current.focus();
                 }}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1 shrink-0 h-10"
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1 shrink-0 h-9"
                 title="Scan Barcode"
               >
                 <Scan className="w-4 h-4 text-blue-600" /> Scan
@@ -889,7 +1073,7 @@ export default function BillingPage() {
               </div>
             )}
 
-            {/* PRODUCT ROWS (Condition: ONLY show product rows when user types a search query or scans barcode!) */}
+            {/* PRODUCT ROWS */}
             {!searchQuery.trim() ? (
               <div className="p-8 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center space-y-2">
                 <Barcode className="w-8 h-8 text-slate-300 mx-auto" />
@@ -917,7 +1101,6 @@ export default function BillingPage() {
                         key={p.id}
                         className="p-2.5 bg-slate-50 hover:bg-blue-50/50 rounded-xl border border-slate-100/80 flex items-center justify-between text-xs transition group"
                       >
-                        {/* Left: Product Name & Category */}
                         <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
                           {p.image_url ? (
                             <img src={p.image_url} alt={p.name} className="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
@@ -932,7 +1115,6 @@ export default function BillingPage() {
                           </div>
                         </div>
 
-                        {/* Middle: Price & Stock Columns */}
                         <div className="flex items-center gap-3 shrink-0 px-1 text-right">
                           <div>
                             <span className="block font-black text-emerald-600 text-xs">₹{formattedPrice}</span>
@@ -941,7 +1123,6 @@ export default function BillingPage() {
                             </span>
                           </div>
 
-                          {/* Right: Add Button */}
                           <button
                             type="button"
                             onClick={() => addToCart(p)}
@@ -962,13 +1143,13 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* DESKTOP RIGHT COLUMN (Hidden on Mobile) */}
+        {/* DESKTOP RIGHT COLUMN */}
         <div className="hidden lg:block lg:col-span-5 space-y-4">
           {renderCartContent()}
         </div>
       </div>
 
-      {/* MOBILE STICKY BOTTOM PANEL (Collapsible Current Bill) */}
+      {/* MOBILE STICKY BOTTOM PANEL */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 shadow-2xl pb-safe">
         {cart.length > 0 && !cartExpanded && (
           <div className="px-4 py-3 bg-slate-900 text-white flex justify-between items-center cursor-pointer" onClick={() => setCartExpanded(true)}>
@@ -1009,7 +1190,6 @@ export default function BillingPage() {
       {saleCompletedModal && lastSaleReceipt && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-[calc(100%-24px)] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto text-xs">
-            {/* TOP CUSTOMER DETAILS */}
             <div className="flex justify-between items-start border-b pb-4">
               <div>
                 <div className="flex items-center gap-2 text-emerald-600">
@@ -1030,7 +1210,6 @@ export default function BillingPage() {
               </span>
             </div>
 
-            {/* PRODUCT ROWS TABLE */}
             <div className="space-y-2">
               <h4 className="font-extrabold text-slate-900 uppercase text-[10px] tracking-wider">Purchased Items</h4>
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -1046,7 +1225,6 @@ export default function BillingPage() {
               </div>
             </div>
 
-            {/* PAYMENT SUMMARY */}
             <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-1.5 font-bold">
               <div className="flex justify-between text-slate-300 text-[11px]"><span>Payment Method:</span> <span className="uppercase">{lastSaleReceipt.payment_method}</span></div>
               <div className="flex justify-between text-slate-300 text-[11px]"><span>Subtotal:</span> <span>₹{lastSaleReceipt.subtotal}</span></div>
@@ -1057,7 +1235,6 @@ export default function BillingPage() {
               <div className="flex justify-between text-slate-300 text-[11px]"><span>Balance Due:</span> <span className={Number(lastSaleReceipt.balance_due) > 0 ? "text-amber-400 font-bold" : "text-slate-300"}>₹{lastSaleReceipt.balance_due}</span></div>
             </div>
 
-            {/* ACTION BUTTONS */}
             <div className="flex gap-2 pt-2 border-t">
               <button
                 type="button"
