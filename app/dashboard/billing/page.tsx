@@ -681,43 +681,58 @@ export default function BillingPage() {
         </div>
       ) : (
         <div className="space-y-2.5">
-          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+          <div className="divide-y divide-slate-200/80 max-h-56 overflow-y-auto pr-1">
             {cart.map((item) => {
-              const itemTotal = (item.product.selling_price * item.quantity).toFixed(2);
+              const unitPrice = Number(item.product.selling_price || 0);
+              const itemTotal = (unitPrice * item.quantity).toFixed(2);
               return (
-                <div key={item.product.id} className="p-2 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center text-xs">
-                  <div className="min-w-0 flex-1 pr-2">
-                    <p className="font-extrabold text-slate-900 truncate text-xs">{item.product.name}</p>
-                    <p className="text-[10px] text-emerald-600 font-bold">₹{Number(item.product.selling_price || 0).toFixed(2)}</p>
+                <div key={item.product.id} className="py-2.5 px-1 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs">
+                  {/* Left: Product Name */}
+                  <div className="min-w-0 flex-1 pr-1">
+                    <p className="font-extrabold text-slate-900 truncate text-xs sm:text-sm">{item.product.name}</p>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg p-0.5">
+                  {/* Controls & Amounts in aligned horizontal layout */}
+                  <div className="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
+                    {/* Quantity Control */}
+                    <div className="flex items-center gap-0.5 bg-slate-100 border border-slate-200/80 rounded-lg p-0.5">
                       <button
                         type="button"
                         onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                        className="p-1 hover:bg-slate-100 rounded cursor-pointer"
+                        className="p-1 hover:bg-slate-200 rounded cursor-pointer transition"
                       >
-                        <Minus className="w-3 h-3 text-slate-600" />
+                        <Minus className="w-3 h-3 text-slate-700" />
                       </button>
-                      <span className="px-1 font-black text-slate-900 text-xs">{item.quantity}</span>
+                      <span className="px-1.5 font-black text-slate-900 text-xs">{item.quantity}</span>
                       <button
                         type="button"
                         onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                        className="p-1 hover:bg-slate-100 rounded cursor-pointer"
+                        className="p-1 hover:bg-slate-200 rounded cursor-pointer transition"
                       >
-                        <Plus className="w-3 h-3 text-slate-600" />
+                        <Plus className="w-3 h-3 text-slate-700" />
                       </button>
                     </div>
 
-                    <span className="font-black text-slate-900 text-xs w-12 text-right">₹{itemTotal}</span>
+                    {/* Unit Selling Price */}
+                    <div className="text-right min-w-[54px]">
+                      <span className="text-[9px] font-bold text-slate-400 block uppercase">Price</span>
+                      <span className="font-extrabold text-slate-700 text-xs">₹{unitPrice.toFixed(2)}</span>
+                    </div>
 
+                    {/* Line Amount */}
+                    <div className="text-right min-w-[60px]">
+                      <span className="text-[9px] font-bold text-slate-400 block uppercase">Amount</span>
+                      <span className="font-black text-emerald-600 text-xs">₹{itemTotal}</span>
+                    </div>
+
+                    {/* Remove Button */}
                     <button
                       type="button"
                       onClick={() => removeFromCart(item.product.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 transition"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                      title="Remove Item"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
