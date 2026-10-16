@@ -214,15 +214,18 @@ export default function SalesPage() {
     const payment = sale.payment_method || "Cash";
 
     let itemsHtml = "";
-    (printItems || []).forEach((item) => {
+    (printItems || []).forEach((item, index) => {
       const name = item.product_name || item.name || "Product";
-      const qty = item.quantity || 1;
-      const price = Number(item.total_amount || item.total || (Number(item.selling_price || item.price || 0) * qty)).toFixed(2);
+      const qty = Number(item.quantity || 1);
+      const unitPrice = Number(item.selling_price || item.price || 0);
+      const lineTotal = Number(item.total_amount || item.total || (unitPrice * qty));
       itemsHtml += `
         <tr>
-          <td style="padding: 4px 0; font-size: 12px; font-weight: bold;">${name}</td>
-          <td style="padding: 4px 0; font-size: 12px; text-align: center;">${qty}</td>
-          <td style="padding: 4px 0; font-size: 12px; text-align: right;">₹${price}</td>
+          <td style="padding: 4px 0; font-size: 11px;">${index + 1}</td>
+          <td style="padding: 4px 0; font-size: 11px; font-weight: bold;">${name}</td>
+          <td style="padding: 4px 0; font-size: 11px; text-align: center;">${qty}</td>
+          <td style="padding: 4px 0; font-size: 11px; text-align: right;">₹${unitPrice.toFixed(2)}</td>
+          <td style="padding: 4px 0; font-size: 11px; text-align: right;">₹${lineTotal.toFixed(2)}</td>
         </tr>
       `;
     });
@@ -233,7 +236,7 @@ export default function SalesPage() {
         <head>
           <title>Receipt - ${billNo}</title>
           <style>
-            body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; width: 280px; margin: 0 auto; background: #fff; }
+            body { font-family: 'Courier New', Courier, monospace; padding: 16px; color: #000; width: 300px; margin: 0 auto; background: #fff; }
             h2, p { text-align: center; margin: 2px 0; }
             h2 { font-size: 16px; font-weight: 900; }
             .meta { font-size: 11px; margin-bottom: 8px; }
@@ -255,9 +258,11 @@ export default function SalesPage() {
           <table>
             <thead>
               <tr>
-                <th>Item</th>
-                <th style="text-align: center;">Qty</th>
-                <th style="text-align: right;">Price</th>
+                <th style="font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px;">#</th>
+                <th style="font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px;">Item</th>
+                <th style="font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px; text-align: center;">Qty</th>
+                <th style="font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px; text-align: right;">Price</th>
+                <th style="font-size: 11px; border-bottom: 1px dashed #000; padding-bottom: 4px; text-align: right;">Amount</th>
               </tr>
             </thead>
             <tbody>

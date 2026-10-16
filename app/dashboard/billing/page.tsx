@@ -420,7 +420,7 @@ export default function BillingPage() {
         selling_price: item.product.selling_price,
       }));
 
-      // Call database RPC complete_sale_transaction strictly for atomic sale completion
+      // Call database RPC complete_sale_transaction with 10 parameters (including p_amount_paid)
       const { data: rpcResult, error: rpcError } = await supabase.rpc("complete_sale_transaction", {
         p_business_id: businessId,
         p_user_id: user.id,
@@ -435,6 +435,9 @@ export default function BillingPage() {
       });
 
       if (rpcError) {
+        if (rpcError.message?.includes("does not exist") || rpcError.code === "PGRST202" || rpcError.code === "42883") {
+          throw new Error("Checkout failed: Database migration is pending. Please run Migration 009 to enable 10-parameter checkout support.");
+        }
         throw new Error(rpcError.message || "Failed to complete sale transaction.");
       }
 
@@ -473,7 +476,6 @@ export default function BillingPage() {
       setSaleCompletedModal(true);
       setSuccessMsg(`Sale completed! Invoice: ${finalInvoiceNumber}`);
 
-      await loadData();
       setCart([]);
       setCartExpanded(false);
       setDiscount(0);
@@ -487,6 +489,9 @@ export default function BillingPage() {
     } finally {
       setSubmitting(false);
     }
+
+    // Refresh catalog and inventory in background without blocking sale completion UI
+    loadData().catch((err) => console.error("Background data refresh failed:", err));
   };
 
   // Print Invoice Function
@@ -525,15 +530,22 @@ export default function BillingPage() {
           <div class="divider"></div>
           <table>
             <thead>
-              <tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Total</th></tr>
+              <tr>
+                <th>#</th>
+                <th>Item</th>
+                <th class="right">Qty</th>
+                <th class="right">Price</th>
+                <th class="right">Amount</th>
+              </tr>
             </thead>
             <tbody>
-              ${(lastSaleReceipt.items || []).map((i: any) => `
+              ${(lastSaleReceipt.items || []).map((i: any, index: number) => `
                 <tr>
+                  <td>${index + 1}</td>
                   <td>${i.product_name}</td>
                   <td class="right">${i.quantity}</td>
-                  <td class="right">₹${i.price}</td>
-                  <td class="right">₹${i.total}</td>
+                  <td class="right">₹${Number(i.price || i.selling_price || 0).toFixed(2)}</td>
+                  <td class="right">₹${Number(i.total || i.total_amount || 0).toFixed(2)}</td>
                 </tr>
               `).join("")}
             </tbody>
