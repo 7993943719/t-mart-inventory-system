@@ -206,7 +206,7 @@ export default function BillDetailPage() {
       if (rpcError) throw new Error(rpcError.message);
       if (rpcResult && rpcResult.error) throw new Error(rpcResult.error);
 
-      setSuccessMsg("Purchase bill deleted and stock reversed successfully!");
+      setSuccessMsg("Purchase bill deleted successfully!");
       setDeleteModalOpen(false);
       setTimeout(() => {
         router.push("/dashboard/stock");
@@ -615,11 +615,11 @@ export default function BillDetailPage() {
               <div className="flex justify-between"><span className="text-slate-500 font-bold">Invoice No:</span> <span className="font-extrabold text-slate-900">#{bill.invoice_no}</span></div>
               <div className="flex justify-between"><span className="text-slate-500 font-bold">Supplier:</span> <span className="font-extrabold text-slate-900">{bill.supplier_name}</span></div>
               <div className="flex justify-between"><span className="text-slate-500 font-bold">Bill Total:</span> <span className="font-extrabold text-slate-900">₹{Number(bill.total_amount || 0).toFixed(2)}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500 font-bold">Stock Status:</span> <span className={`font-black uppercase px-2 py-0.5 rounded-full text-[10px] ${bill.status === "stock_added" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{bill.status === "stock_added" ? "Stock Added (Will Reverse)" : "Pending Stock (No Stock Change)"}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500 font-bold">Stock Status:</span> <span className={`font-black uppercase px-2 py-0.5 rounded-full text-[10px] ${bill.status === "stock_added" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{bill.status === "stock_added" ? "Stock Added (Locked)" : "Pending Stock (No Stock Change)"}</span></div>
             </div>
 
             <p className="text-slate-500 font-medium">
-              Deleting this purchase bill will remove payment records and reverse stock quantities if stock was already finalized. This action cannot be undone.
+              Deleting a pending stock purchase bill soft-deletes the invoice record without altering product inventory. Bills with recorded payments or finalized stock cannot be automatically deleted.
             </p>
 
             <div className="flex gap-3 pt-2">
