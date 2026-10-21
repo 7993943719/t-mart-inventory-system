@@ -102,9 +102,13 @@ export default function StockAuditPage() {
         .from("profiles")
         .select("full_name")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (prof?.full_name) setUserName(prof.full_name);
+      if (prof?.full_name) {
+        setUserName(prof.full_name);
+      } else if (user.user_metadata?.full_name) {
+        setUserName(user.user_metadata.full_name);
+      }
 
       const bizId = currentBiz?.id || user.id;
 

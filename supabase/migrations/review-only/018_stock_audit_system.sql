@@ -1,12 +1,15 @@
 -- ============================================================================
 -- REVIEW-ONLY SQL MIGRATION 018: PRODUCTION STOCK AUDIT & REPORTING SYSTEM
 -- ============================================================================
--- IMPORTANT: REVIEW ONLY. Do NOT execute on production without approval.
+-- IMPORTANT: Review only. Do NOT execute on production without approval.
 -- Implements IST (Asia/Kolkata) fixed 12:00 AM midnight to 11:59:59 PM daily
 -- audit cycle system and restricted current-calendar-month reporting filters.
 -- ============================================================================
 
 BEGIN;
+
+-- Ensure profiles table has full_name column safely
+ALTER TABLE IF EXISTS public.profiles ADD COLUMN IF NOT EXISTS full_name VARCHAR(255);
 
 -- 1. STOCK AUDIT CYCLES (Fixed Daily Cycle in Asia/Kolkata Timezone)
 CREATE TABLE IF NOT EXISTS public.stock_audit_cycles (
@@ -363,9 +366,14 @@ BEGIN
         RAISE EXCEPTION 'Physical quantity must be a non-negative finite number.';
     END IF;
 
-    SELECT COALESCE(full_name, p_submitted_by_name) INTO v_user_name
-    FROM public.profiles
-    WHERE id = v_caller_uid;
+    -- Safely query full_name from profiles with fallback
+    BEGIN
+        SELECT full_name INTO v_user_name
+        FROM public.profiles
+        WHERE id = v_caller_uid;
+    EXCEPTION WHEN OTHERS THEN
+        v_user_name := NULL;
+    END;
 
     IF v_user_name IS NULL OR TRIM(v_user_name) = '' THEN
         v_user_name := COALESCE(NULLIF(TRIM(p_submitted_by_name), ''), 'Staff Member');
@@ -604,9 +612,13 @@ BEGIN
         RAISE EXCEPTION 'Audit entry not found or does not belong to this business.';
     END IF;
 
-    SELECT COALESCE(full_name, 'Admin') INTO v_user_name
-    FROM public.profiles
-    WHERE id = v_caller_uid;
+    BEGIN
+        SELECT full_name INTO v_user_name
+        FROM public.profiles
+        WHERE id = v_caller_uid;
+    EXCEPTION WHEN OTHERS THEN
+        v_user_name := NULL;
+    END IF;
 
     -- Log immutable correction history
     INSERT INTO public.stock_audit_corrections (
