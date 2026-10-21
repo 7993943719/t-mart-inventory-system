@@ -52,11 +52,16 @@ export default function PurchasesPage() {
         .from("purchase_bills")
         .select("*")
         .eq("business_id", bizId)
-        .eq("supplier_name", vendor.name)
         .order("created_at", { ascending: false });
 
       if (billsErr) throw billsErr;
-      const bills = billsData || [];
+      const allBills = billsData || [];
+
+      const targetName = (vendor.name || "").trim().toLowerCase();
+      const bills = allBills.filter((b: any) => {
+        const sName = (b.supplier_name || "").trim().toLowerCase();
+        return sName === targetName || (!sName && targetName === "general supplier") || (sName === "general supplier" && targetName === "general supplier");
+      });
 
       const billIds = bills.map((b: any) => b.id);
       let paymentsMap: { [billId: string]: number } = {};
