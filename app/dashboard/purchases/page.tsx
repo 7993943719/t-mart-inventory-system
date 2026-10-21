@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout";
 import { createClient } from "@/lib/supabase/client";
+import { saveSupplierAction, deleteSupplierAction } from "./actions";
 import { Truck, Plus, Search, X, Edit, Trash2, Phone, MapPin, Mail, CheckCircle2, AlertCircle, FileText } from "lucide-react";
 
 export default function PurchasesPage() {
@@ -32,6 +33,32 @@ export default function PurchasesPage() {
   const [business, setBusiness] = useState<any>(null);
   const [userName, setUserName] = useState("Admin");
   const [role, setRole] = useState("OWNER");
+
+  // Vendor Bills Modal State
+  const [selectedVendorForBills, setSelectedVendorForBills] = useState<any | null>(null);
+  const [vendorBills, setVendorBills] = useState<any[]>([]);
+  const [loadingVendorBills, setLoadingVendorBills] = useState(false);
+  const [vendorBillsModalOpen, setVendorBillsModalOpen] = useState(false);
+
+  const handleOpenVendorBills = async (vendor: any) => {
+    setSelectedVendorForBills(vendor);
+    setVendorBillsModalOpen(true);
+    setLoadingVendorBills(true);
+    try {
+      const { data: billsData, error: billsErr } = await supabase
+        .from("purchase_bills")
+        .select("*")
+        .eq("supplier_name", vendor.name)
+        .order("created_at", { ascending: false });
+
+      if (billsErr) throw billsErr;
+      setVendorBills(billsData || []);
+    } catch (err: any) {
+      console.error("Error fetching vendor bills:", err);
+    } finally {
+      setLoadingVendorBills(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -117,35 +144,22 @@ export default function PurchasesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       const bizId = business?.id || user?.id;
 
-      const payload = {
-        business_id: bizId,
+      const res = await saveSupplierAction({
+        id: editingSupplier?.id,
+        businessId: bizId,
         name: name.trim(),
-        phone: phone.trim() || null,
-        email: email.trim() || null,
-        address: address.trim() || null,
-        gstin: gstin.trim() || null,
-      };
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        gstin: gstin.trim() || undefined,
+      });
 
-      if (editingSupplier) {
-        const { error } = await supabase
-          .from("suppliers")
-          .update(payload)
-          .eq("id", editingSupplier.id);
-
-        if (error) throw error;
-        setSuccessMsg("Vendor updated successfully!");
-      } else {
-        const { error } = await supabase
-          .from("suppliers")
-          .insert([{ ...payload, created_at: new Date().toISOString() }]);
-
-        if (error) throw error;
-        setSuccessMsg("Vendor added successfully!");
+      if (res && res.success) {
+        setSuccessMsg(res.message || "Vendor saved successfully!");
+        setAddModalOpen(false);
+        await loadData();
+        setTimeout(() => setSuccessMsg(""), 4000);
       }
-
-      setAddModalOpen(false);
-      await loadData();
-      setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err: any) {
       console.error("Error saving vendor:", err);
       setErrorMsg(err.message || "Failed to save vendor.");
@@ -161,18 +175,21 @@ export default function PurchasesPage() {
     setSuccessMsg("");
 
     try {
-      const { error } = await supabase
-        .from("suppliers")
-        .delete()
-        .eq("id", supplierToDelete.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      const bizId = business?.id || user?.id;
 
-      if (error) throw error;
+      const res = await deleteSupplierAction({
+        businessId: bizId,
+        supplierId: supplierToDelete.id,
+      });
 
-      setSuccessMsg("Vendor deleted successfully.");
-      setDeleteModalOpen(false);
-      setSupplierToDelete(null);
-      await loadData();
-      setTimeout(() => setSuccessMsg(""), 4000);
+      if (res && res.success) {
+        setSuccessMsg(res.message || "Vendor deleted successfully.");
+        setDeleteModalOpen(false);
+        setSupplierToDelete(null);
+        await loadData();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      }
     } catch (err: any) {
       console.error("Error deleting vendor:", err);
       setErrorMsg(err.message || "Failed to delete vendor.");
@@ -303,6 +320,12 @@ export default function PurchasesPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  onClick={() => handleOpenVendorBills(s)}
+                  className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold rounded-xl text-xs transition cursor-pointer min-h-[38px] inline-flex items-center gap-1"
+                >
+                  <FileText className="w-3.5 h-3.5" /> Bills
+                </button>
                 <button
                   onClick={() => handleOpenEditModal(s)}
                   className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold rounded-xl text-xs transition cursor-pointer min-h-[38px] inline-flex items-center gap-1"
@@ -447,6 +470,71 @@ export default function PurchasesPage() {
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px]"
               >
                 {submitting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VENDOR BILLS HISTORY MODAL */}
+      {vendorBillsModalOpen && selectedVendorForBills && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-[calc(100%-24px)] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto text-xs">
+            <div className="flex justify-between items-center border-b pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900">{selectedVendorForBills.name} — Purchase Bills</h3>
+                <p className="text-[11px] text-slate-400 font-mono">Vendor Purchase History</p>
+              </div>
+              <button onClick={() => setVendorBillsModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingVendorBills ? (
+              <div className="p-8 text-center text-slate-400">Loading purchase bills...</div>
+            ) : vendorBills.length === 0 ? (
+              <div className="p-8 text-center space-y-2">
+                <FileText className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="font-bold text-slate-700">No purchase bills found for this vendor.</p>
+                <p className="text-slate-400 text-[11px]">Purchase bills confirmed in Stock & Inventory will appear here.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {vendorBills.map((b) => (
+                  <div key={b.id} className="p-4 bg-slate-50 rounded-2xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-slate-900 text-xs">Invoice #{b.invoice_no}</span>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${b.status === "stock_added" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                          {b.status === "stock_added" ? "Stock Added" : "Pending Stock"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Date: {b.invoice_date || "N/A"} • Items: {Array.isArray(b.items) ? b.items.length : 0}</p>
+                    </div>
+
+                    <div className="text-right flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3 pt-2 sm:pt-0 border-t sm:border-t-0">
+                      <div>
+                        <span className="block font-black text-slate-900 text-xs">₹{Number(b.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <a
+                        href={b.status === "pending_stock" ? `/dashboard/stock/bills/${b.id}/review` : `/dashboard/stock/bills/${b.id}`}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-[11px] transition inline-block min-h-[36px]"
+                      >
+                        {b.status === "pending_stock" ? "Review & Add Stock" : "View Details"}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-2 border-t flex justify-end">
+              <button
+                type="button"
+                onClick={() => setVendorBillsModalOpen(false)}
+                className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs cursor-pointer min-h-[38px]"
+              >
+                Close
               </button>
             </div>
           </div>

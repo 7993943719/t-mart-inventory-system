@@ -113,16 +113,19 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
           width: "calc(100% - 24px)",
           maxWidth: "650px",
           maxHeight: "calc(100vh - 24px)",
-          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
           background: "#FFFFFF",
           borderRadius: "16px",
           boxShadow: "0 25px 60px rgba(15,23,42,.25)",
           boxSizing: "border-box",
           margin: "12px",
+          overflow: "hidden",
         }}
       >
         {/* HEADER */}
         <div style={{
+          flexShrink: 0,
           background: "linear-gradient(135deg, #2563EB, #1D4ED8)",
           padding: "20px 24px",
           color: "#FFFFFF",
@@ -163,165 +166,184 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
         </div>
 
         {errorMsg && (
-          <div style={{ margin: "20px 24px 0 24px", padding: "12px", background: "#fff1f2", border: "1px solid #fecdd3", color: "#be123c", borderRadius: "10px", fontSize: "12px", fontWeight: 700 }}>
+          <div style={{ flexShrink: 0, margin: "16px 24px 0 24px", padding: "12px", background: "#fff1f2", border: "1px solid #fecdd3", color: "#be123c", borderRadius: "10px", fontSize: "12px", fontWeight: 700 }}>
             {errorMsg}
           </div>
         )}
 
         {/* FORM */}
-        <form onSubmit={handleSubmit} style={{ padding: "24px" }}>
-          {/* PRODUCT INFORMATION */}
-          <div style={{ marginBottom: "20px" }}>
-            <h3 style={{ fontSize: "13px", color: "#2563EB", marginBottom: "12px", fontWeight: 800, textTransform: "uppercase" }}>
-              Product Information
-            </h3>
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            flex: 1,
+            overflow: "hidden",
+          }}
+        >
+          {/* SCROLLABLE FORM BODY */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px" }}>
+            {/* PRODUCT INFORMATION */}
+            <div style={{ marginBottom: "20px" }}>
+              <h3 style={{ fontSize: "13px", color: "#2563EB", marginBottom: "12px", fontWeight: 800, textTransform: "uppercase" }}>
+                Product Information
+              </h3>
 
-            <div style={{ display: "grid", gap: "14px" }}>
-              <div>
-                <label style={labelStyle}>Product Name</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter product name"
-                  style={inputStyle}
-                />
+              <div style={{ display: "grid", gap: "14px" }}>
+                <div>
+                  <label style={labelStyle}>Product Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter product name"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>SKU / Barcode</label>
+                  <input
+                    type="text"
+                    required
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    placeholder="Enter SKU or scan barcode"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Category</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="Grocery">Grocery</option>
+                    <option value="Beverages">Beverages</option>
+                    <option value="Snacks">Snacks</option>
+                    <option value="Personal Care">Personal Care</option>
+                    <option value="Household">Household</option>
+                    <option value="General">General</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* PRICING */}
+            <div style={{
+              background: "#F0FDF4",
+              border: "1px solid #DCFCE7",
+              borderRadius: "14px",
+              padding: "16px",
+              marginBottom: "16px",
+            }}>
+              <h3 style={{ fontSize: "13px", color: "#16A34A", marginTop: 0, marginBottom: "12px", fontWeight: 800, textTransform: "uppercase" }}>
+                Pricing
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label style={labelStyle}>Purchase Price ₹</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    value={purchasePrice}
+                    onChange={(e) => setPurchasePrice(Number(e.target.value))}
+                    placeholder="0.00"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Selling Price ₹</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                    value={sellingPrice}
+                    onChange={(e) => setSellingPrice(Number(e.target.value))}
+                    placeholder="0.00"
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* INVENTORY */}
+            <div style={{
+              background: "#EFF6FF",
+              border: "1px solid #DBEAFE",
+              borderRadius: "14px",
+              padding: "16px",
+            }}>
+              <h3 style={{ fontSize: "13px", color: "#2563EB", marginTop: 0, marginBottom: "12px", fontWeight: 800, textTransform: "uppercase" }}>
+                Inventory
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label style={labelStyle}>Opening Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={openingStock}
+                    onChange={(e) => setOpeningStock(Number(e.target.value))}
+                    placeholder="0"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Minimum Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={minimumStock}
+                    onChange={(e) => setMinimumStock(Number(e.target.value))}
+                    placeholder="10"
+                    style={inputStyle}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label style={labelStyle}>SKU / Barcode</label>
-                <input
-                  type="text"
-                  required
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="Enter SKU or scan barcode"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Category</label>
+              <div style={{ marginTop: "14px" }}>
+                <label style={labelStyle}>Unit</label>
                 <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="Grocery">Grocery</option>
-                  <option value="Beverages">Beverages</option>
-                  <option value="Snacks">Snacks</option>
-                  <option value="Personal Care">Personal Care</option>
-                  <option value="Household">Household</option>
-                  <option value="General">General</option>
+                  <option value="Piece">Piece</option>
+                  <option value="Kg">Kg</option>
+                  <option value="Gram">Gram</option>
+                  <option value="Litre">Litre</option>
+                  <option value="Packet">Packet</option>
+                  <option value="Box">Box</option>
+                  <option value="Dozen">Dozen</option>
                 </select>
               </div>
             </div>
           </div>
 
-          {/* PRICING */}
+          {/* STICKY FOOTER BUTTONS */}
           <div style={{
-            background: "#F0FDF4",
-            border: "1px solid #DCFCE7",
-            borderRadius: "14px",
-            padding: "16px",
-            marginBottom: "16px",
+            flexShrink: 0,
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "10px",
+            padding: "16px 24px",
+            borderTop: "1px solid #E2E8F0",
+            background: "#FFFFFF",
           }}>
-            <h3 style={{ fontSize: "13px", color: "#16A34A", marginTop: 0, marginBottom: "12px", fontWeight: 800, textTransform: "uppercase" }}>
-              Pricing
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label style={labelStyle}>Purchase Price ₹</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  value={purchasePrice}
-                  onChange={(e) => setPurchasePrice(Number(e.target.value))}
-                  placeholder="0.00"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Selling Price ₹</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  value={sellingPrice}
-                  onChange={(e) => setSellingPrice(Number(e.target.value))}
-                  placeholder="0.00"
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* INVENTORY */}
-          <div style={{
-            background: "#EFF6FF",
-            border: "1px solid #DBEAFE",
-            borderRadius: "14px",
-            padding: "16px",
-            marginBottom: "20px",
-          }}>
-            <h3 style={{ fontSize: "13px", color: "#2563EB", marginTop: 0, marginBottom: "12px", fontWeight: 800, textTransform: "uppercase" }}>
-              Inventory
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label style={labelStyle}>Opening Stock</label>
-                <input
-                  type="number"
-                  min="0"
-                  required
-                  value={openingStock}
-                  onChange={(e) => setOpeningStock(Number(e.target.value))}
-                  placeholder="0"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Minimum Stock</label>
-                <input
-                  type="number"
-                  min="0"
-                  required
-                  value={minimumStock}
-                  onChange={(e) => setMinimumStock(Number(e.target.value))}
-                  placeholder="10"
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-
-            <div style={{ marginTop: "14px" }}>
-              <label style={labelStyle}>Unit</label>
-              <select
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="Piece">Piece</option>
-                <option value="Kg">Kg</option>
-                <option value="Gram">Gram</option>
-                <option value="Litre">Litre</option>
-                <option value="Packet">Packet</option>
-                <option value="Box">Box</option>
-                <option value="Dozen">Dozen</option>
-              </select>
-            </div>
-          </div>
-
-          {/* BUTTONS */}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
             <button
               type="button"
               onClick={onClose}
