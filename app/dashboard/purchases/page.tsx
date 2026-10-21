@@ -45,16 +45,45 @@ export default function PurchasesPage() {
     setVendorBillsModalOpen(true);
     setLoadingVendorBills(true);
     try {
+      const bizId = business?.id;
+      if (!bizId) return;
+
       const { data: billsData, error: billsErr } = await supabase
         .from("purchase_bills")
         .select("*")
+        .eq("business_id", bizId)
         .eq("supplier_name", vendor.name)
         .order("created_at", { ascending: false });
 
       if (billsErr) throw billsErr;
-      setVendorBills(billsData || []);
+      const bills = billsData || [];
+
+      const billIds = bills.map((b: any) => b.id);
+      let paymentsMap: { [billId: string]: number } = {};
+      if (billIds.length > 0) {
+        const { data: payData } = await supabase
+          .from("purchase_payments")
+          .select("purchase_bill_id, amount")
+          .eq("business_id", bizId)
+          .in("purchase_bill_id", billIds);
+
+        if (payData) {
+          for (const p of payData) {
+            paymentsMap[p.purchase_bill_id] = (paymentsMap[p.purchase_bill_id] || 0) + Number(p.amount || 0);
+          }
+        }
+      }
+
+      const enrichedBills = bills.map((b: any) => {
+        const billTotal = Number(b.total_amount || 0) + Number(b.total_expenses || 0);
+        const paid = paymentsMap[b.id] || 0;
+        const balance = Math.max(0, billTotal - paid);
+        return { ...b, billTotal, paid, balance };
+      });
+
+      setVendorBills(enrichedBills);
     } catch (err: any) {
-      console.error("Error fetching vendor bills:", err);
+      console.error("Error fetching vendor bills & payments:", err);
     } finally {
       setLoadingVendorBills(false);
     }
@@ -499,7 +528,31 @@ export default function PurchasesPage() {
                 <p className="text-slate-400 text-[11px]">Purchase bills confirmed in Stock & Inventory will appear here.</p>
               </div>
             ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              <div className="space-y-4">
+                {/* VENDOR FINANCIAL SUMMARY CARDS */}
+                {(() => {
+                  const totalPurchases = vendorBills.reduce((sum, b) => sum + Number(b.billTotal || 0), 0);
+                  const totalPayments = vendorBills.reduce((sum, b) => sum + Number(b.paid || 0), 0);
+                  const outstandingBalance = Math.max(0, totalPurchases - totalPayments);
+                  return (
+                    <div className="grid grid-cols-3 gap-3 bg-slate-900 text-white p-4 rounded-2xl text-[11px] font-bold">
+                      <div>
+                        <span className="text-slate-400 block uppercase text-[10px]">Total Purchases</span>
+                        <span className="text-sm font-black text-white">₹{totalPurchases.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block uppercase text-[10px]">Total Payments</span>
+                        <span className="text-sm font-black text-emerald-400">₹{totalPayments.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block uppercase text-[10px]">Outstanding</span>
+                        <span className={`text-sm font-black ${outstandingBalance > 0 ? "text-rose-400" : "text-emerald-400"}`}>₹{outstandingBalance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
                 {vendorBills.map((b) => (
                   <div key={b.id} className="p-4 bg-slate-50 rounded-2xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
@@ -510,11 +563,12 @@ export default function PurchasesPage() {
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-400 mt-0.5">Date: {b.invoice_date || "N/A"} • Items: {Array.isArray(b.items) ? b.items.length : 0}</p>
+                      <p className="text-[10px] text-slate-500 font-medium">Paid: ₹{Number(b.paid || 0).toFixed(2)} • Balance: ₹{Number(b.balance || 0).toFixed(2)}</p>
                     </div>
 
                     <div className="text-right flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3 pt-2 sm:pt-0 border-t sm:border-t-0">
                       <div>
-                        <span className="block font-black text-slate-900 text-xs">₹{Number(b.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                        <span className="block font-black text-slate-900 text-xs">₹{Number(b.billTotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                       </div>
                       <a
                         href={b.status === "pending_stock" ? `/dashboard/stock/bills/${b.id}/review` : `/dashboard/stock/bills/${b.id}`}
@@ -525,6 +579,7 @@ export default function PurchasesPage() {
                     </div>
                   </div>
                 ))}
+              </div>
               </div>
             )}
 
