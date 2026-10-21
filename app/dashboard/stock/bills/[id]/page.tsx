@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, ArrowLeft, Printer, Building, Calendar, CheckCircle2, Loader2, Plus, DollarSign, X } from "lucide-react";
+import { ReceiptText, ArrowLeft, Printer, Building, Calendar, CheckCircle2, Loader2, Plus, DollarSign, X, Edit } from "lucide-react";
 
 export default function BillDetailPage() {
   const params = useParams();
@@ -253,6 +253,12 @@ export default function BillDetailPage() {
                 <Plus className="w-4 h-4" /> Record Payment
               </button>
             )}
+            <button
+              onClick={() => router.push(`/dashboard/stock/bills/${billId}/edit`)}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer"
+            >
+              <Edit className="w-4 h-4" /> Edit Bill
+            </button>
             <button
               onClick={handlePrint}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer"
