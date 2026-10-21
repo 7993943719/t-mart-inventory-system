@@ -414,6 +414,15 @@ export default function BillDetailPage() {
               </div>
             </div>
 
+            <div className="flex justify-end pt-2 print:hidden">
+              <button
+                onClick={() => router.push(`/dashboard/stock/bills/${billId}/edit`)}
+                className="px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-2xl shadow-md transition flex items-center gap-1.5 cursor-pointer min-h-[44px]"
+              >
+                <Edit className="w-4 h-4" /> Edit Products & Expenses
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="p-4 bg-slate-50 rounded-2xl border space-y-2">
                 <h4 className="text-xs font-black text-slate-800 uppercase">Purchase Expenses</h4>
