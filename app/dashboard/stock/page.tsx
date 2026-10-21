@@ -176,8 +176,8 @@ export default function StockPage() {
   // Add stock manual modal
   const [addStockModalOpen, setAddStockModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [addQty, setAddQty] = useState<number>(10);
-  const [purchasePrice, setPurchasePrice] = useState<number>(100);
+  const [addQty, setAddQty] = useState<number | string>(10);
+  const [purchasePrice, setPurchasePrice] = useState<number | string>(100);
   const [supplier, setSupplier] = useState("");
   const [reference, setReference] = useState("");
 
@@ -599,7 +599,21 @@ export default function StockPage() {
 
   const handleAddStockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProduct) return;
+    if (!selectedProduct || submitting) return;
+
+    const qtyNum = Number(addQty);
+    const priceNum = Number(purchasePrice);
+
+    if (addQty === "" || addQty === undefined || addQty === null || isNaN(qtyNum) || !isFinite(qtyNum) || qtyNum <= 0) {
+      setErrorMsg("Please enter a valid quantity greater than zero.");
+      return;
+    }
+
+    if (purchasePrice === "" || purchasePrice === undefined || purchasePrice === null || isNaN(priceNum) || !isFinite(priceNum) || priceNum < 0) {
+      setErrorMsg("Please enter a valid non-negative purchase price.");
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -613,18 +627,29 @@ export default function StockPage() {
       const { data, error } = await supabase.rpc("add_product_stock", {
         p_business_id: bizId,
         p_product_id: selectedProduct.id,
-        p_quantity: Number(addQty),
+        p_quantity: qtyNum,
         p_supplier: supplier.trim() || null,
         p_reference: reference.trim() || null,
         p_notes: "Manual Stock Addition",
-        p_purchase_price: Number(purchasePrice),
+        p_purchase_price: priceNum,
         p_movement_date: new Date().toISOString().split("T")[0],
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase add_product_stock error:", {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw new Error(error.message || error.details || "Failed to add stock.");
+      }
 
       setSuccessMsg("Stock added successfully!");
       setAddStockModalOpen(false);
+      setAddQty(10);
+      setSupplier("");
+      setReference("");
       await loadData();
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err: any) {
