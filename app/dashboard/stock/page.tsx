@@ -698,10 +698,7 @@ export default function StockPage() {
               />
             </label>
             <button
-              onClick={() => {
-                setCameraMode("physical");
-                fileInputRef.current?.click();
-              }}
+              onClick={() => router.push("/dashboard/stock-audit")}
               className="px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-2xl text-xs shadow-md transition flex items-center gap-1.5 cursor-pointer min-h-[44px]"
             >
               <ClipboardCheck className="w-4 h-4" /> Stock Audit
