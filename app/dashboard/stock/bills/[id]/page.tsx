@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, ArrowLeft, Printer, Building, Calendar, CheckCircle2, Loader2, Plus, DollarSign, X, Edit } from "lucide-react";
+import { ReceiptText, ArrowLeft, Printer, Building, Calendar, CheckCircle2, Loader2, Plus, DollarSign, X, Edit, Trash2 } from "lucide-react";
 
 export default function BillDetailPage() {
   const params = useParams();
@@ -179,6 +179,46 @@ export default function BillDetailPage() {
     window.print();
   };
 
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingBill, setDeletingBill] = useState(false);
+
+  const handleDeleteBill = async () => {
+    if (!business?.id || !billId || deletingBill) return;
+    setDeletingBill(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const idempotencyKey = typeof window !== "undefined" && window.crypto && window.crypto.randomUUID
+        ? window.crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+          });
+
+      const { data: rpcResult, error: rpcError } = await supabase.rpc("delete_purchase_bill", {
+        p_business_id: business.id,
+        p_bill_id: billId,
+        p_idempotency_key: idempotencyKey,
+      });
+
+      if (rpcError) throw new Error(rpcError.message);
+      if (rpcResult && rpcResult.error) throw new Error(rpcResult.error);
+
+      setSuccessMsg("Purchase bill deleted and stock reversed successfully!");
+      setDeleteModalOpen(false);
+      setTimeout(() => {
+        router.push("/dashboard/stock");
+      }, 1500);
+    } catch (err: any) {
+      console.error("Failed to delete purchase bill:", err);
+      setErrorMsg(err.message || "Failed to delete purchase bill.");
+      setDeletingBill(false);
+      setDeleteModalOpen(false);
+    }
+  };
+
   // Calculate Payment Totals & Status
   const totalBillAmount = Number(bill?.total_amount || 0);
   const ledgerPaid = payments.reduce(
@@ -264,6 +304,12 @@ export default function BillDetailPage() {
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer"
             >
               <Printer className="w-4 h-4" /> Print Bill
+            </button>
+            <button
+              onClick={() => setDeleteModalOpen(true)}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" /> Delete Bill
             </button>
           </div>
         </div>
@@ -550,6 +596,49 @@ export default function BillDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteModalOpen && bill && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 text-xs">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="text-base font-black text-slate-900">Delete Purchase Bill</h3>
+              <button onClick={() => setDeleteModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border">
+              <div className="flex justify-between"><span className="text-slate-500 font-bold">Invoice No:</span> <span className="font-extrabold text-slate-900">#{bill.invoice_no}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500 font-bold">Supplier:</span> <span className="font-extrabold text-slate-900">{bill.supplier_name}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500 font-bold">Bill Total:</span> <span className="font-extrabold text-slate-900">₹{Number(bill.total_amount || 0).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500 font-bold">Stock Status:</span> <span className={`font-black uppercase px-2 py-0.5 rounded-full text-[10px] ${bill.status === "stock_added" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{bill.status === "stock_added" ? "Stock Added (Will Reverse)" : "Pending Stock (No Stock Change)"}</span></div>
+            </div>
+
+            <p className="text-slate-500 font-medium">
+              Deleting this purchase bill will remove payment records and reverse stock quantities if stock was already finalized. This action cannot be undone.
+            </p>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                className="flex-1 py-3 border rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer min-h-[44px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingBill}
+                onClick={handleDeleteBill}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
+              >
+                {deletingBill ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm Delete"}
+              </button>
+            </div>
           </div>
         </div>
       )}
