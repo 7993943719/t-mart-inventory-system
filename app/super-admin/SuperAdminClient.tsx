@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, startTransition } from "react";
+import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ShieldCheck,
@@ -77,6 +77,7 @@ export default function SuperAdminClient({
 
   const [activeSection, setActiveSection] = useState<"businesses" | "plans" | "payments" | "admins">("businesses");
   const [searchQuery, setSearchQuery] = useState("");
+  const [submittedSearchQuery, setSubmittedSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
@@ -107,6 +108,16 @@ export default function SuperAdminClient({
 
   const handleRefresh = async () => {
     window.location.reload();
+  };
+
+  const handleSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSubmittedSearchQuery(searchQuery);
+  };
+
+  const handleSearchClear = () => {
+    setSearchQuery("");
+    setSubmittedSearchQuery("");
   };
 
   const handleOpenEditBiz = (biz: any) => {
@@ -262,6 +273,7 @@ export default function SuperAdminClient({
   const subMap = new Map(subscriptions.map((s) => [s.business_id, s]));
   const businessMap = new Map(businesses.map((b) => [b.id, b]));
   const profileMap = new Map(profiles.map((p) => [p.id, p]));
+  const authUserMap = new Map(authUsers.map((u) => [u.id, u]));
 
   const membersByBiz = new Map<string, any[]>();
   for (const m of members) {
@@ -283,16 +295,21 @@ export default function SuperAdminClient({
 
     return payStatus === statusFilter.toLowerCase();
   }).filter((b) => {
-    const query = searchQuery.toLowerCase().trim();
+    const query = submittedSearchQuery.toLowerCase().trim();
     if (!query) return true;
     const ownerProf = profileMap.get(b.owner_id);
+    const ownerAuth = authUserMap.get(b.owner_id);
     const ownerName = ownerProf?.full_name || "";
+    const ownerEmail = ownerAuth?.email || ownerProf?.email || "";
+    const ownerPhone = ownerProf?.phone || ownerAuth?.phone || b.phone || "";
 
     return (
       b.name.toLowerCase().includes(query) ||
       (b.city || "").toLowerCase().includes(query) ||
       (b.phone || "").toLowerCase().includes(query) ||
-      ownerName.toLowerCase().includes(query)
+      ownerName.toLowerCase().includes(query) ||
+      ownerEmail.toLowerCase().includes(query) ||
+      ownerPhone.toLowerCase().includes(query)
     );
   });
 
@@ -330,7 +347,7 @@ export default function SuperAdminClient({
           </div>
 
           <button
-            onClick={() => startTransition(() => handleRefresh())}
+            onClick={() => handleRefresh()}
             className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -429,23 +446,44 @@ export default function SuperAdminClient({
           </div>
 
           {/* SEARCH & FILTERS */}
-          <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex flex-col sm:flex-row gap-3 justify-between items-center">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search business name, owner or city..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 h-11"
-              />
+          <form onSubmit={handleSearchSubmit} className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex flex-col md:flex-row gap-3 justify-between items-center">
+            <div className="relative flex-1 w-full flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search business name, owner email, phone or city..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSearchSubmit();
+                  }}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 h-11"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl shadow-md transition cursor-pointer h-11 shrink-0 flex items-center gap-1.5"
+              >
+                <Search className="w-3.5 h-3.5" /> Search
+              </button>
+              {submittedSearchQuery && (
+                <button
+                  type="button"
+                  onClick={handleSearchClear}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer h-11 shrink-0"
+                >
+                  Clear
+                </button>
+              )}
             </div>
 
-            <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto">
+            <div className="flex gap-1.5 overflow-x-auto w-full md:w-auto shrink-0">
               {["ALL", "PENDING", "APPROVED", "REJECTED", "NONE"].map((st) => (
                 <button
                   key={st}
-                  onClick={() => startTransition(() => setStatusFilter(st))}
+                  type="button"
+                  onClick={() => setStatusFilter(st)}
                   className={`px-3 py-2 rounded-xl font-black text-[11px] uppercase transition cursor-pointer ${
                     statusFilter === st ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
@@ -454,11 +492,15 @@ export default function SuperAdminClient({
                 </button>
               ))}
             </div>
-          </div>
+          </form>
 
           <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
             {filteredBusinesses.length === 0 ? (
-              <div className="p-12 text-center text-xs text-slate-400">No client businesses found matching filter.</div>
+              <div className="p-12 text-center space-y-2">
+                <Building className="w-10 h-10 text-slate-600 mx-auto" />
+                <p className="text-sm font-bold text-slate-300">No client businesses found matching search or filter criteria.</p>
+                <p className="text-xs text-slate-500">Try adjusting your search query or status filters (e.g. click Clear or select ALL).</p>
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-300">
@@ -466,7 +508,7 @@ export default function SuperAdminClient({
                     <tr>
                       <th className="p-4 w-8"></th>
                       <th className="p-4">Business Name</th>
-                      <th className="p-4">Owner Email</th>
+                      <th className="p-4">Owner Contact (Email & Phone)</th>
                       <th className="p-4">Plan & Amount</th>
                       <th className="p-4">Members (Current / Limit)</th>
                       <th className="p-4">Sub Status</th>
@@ -488,7 +530,9 @@ export default function SuperAdminClient({
 
                       const bizMembers = membersByBiz.get(biz.id) || [];
                       const ownerProfile = profileMap.get(biz.owner_id);
-                      const ownerEmail = ownerProfile?.full_name || biz.phone || "Owner";
+                      const ownerAuth = authUserMap.get(biz.owner_id);
+                      const ownerEmail = ownerAuth?.email || ownerProfile?.email || "Not available";
+                      const ownerPhone = ownerProfile?.phone || ownerAuth?.phone || biz.phone || "Not available";
 
                       const memberLimit = Number(sub?.member_limit || 5);
                       const currentCount = bizMembers.length;
@@ -496,7 +540,7 @@ export default function SuperAdminClient({
 
                       return (
                         <React.Fragment key={biz.id}>
-                          <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => startTransition(() => setExpandedBizId(isExpanded ? null : biz.id))}>
+                          <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => setExpandedBizId(isExpanded ? null : biz.id)}>
                             <td className="p-4 text-slate-500">
                               {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4" />}
                             </td>
@@ -507,7 +551,8 @@ export default function SuperAdminClient({
                               </span>
                             </td>
                             <td className="p-4 font-mono text-slate-200">
-                              {ownerEmail}
+                              <span className="block font-bold text-white">{ownerEmail}</span>
+                              <span className="block text-[10px] text-indigo-400">{ownerPhone}</span>
                             </td>
                             <td className="p-4">
                               <span className="font-extrabold text-indigo-400">{sub?.plan || "basic"}</span>
@@ -541,7 +586,7 @@ export default function SuperAdminClient({
                               <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                 <button
                                   type="button"
-                                  onClick={() => startTransition(() => handleOpenEditBiz(biz))}
+                                  onClick={() => handleOpenEditBiz(biz)}
                                   className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                   title="Edit Subscription & Limits"
                                 >
@@ -551,7 +596,7 @@ export default function SuperAdminClient({
                                   <button
                                     type="button"
                                     disabled={loadingId === biz.id}
-                                    onClick={() => startTransition(() => handleDeactivateBiz(biz.id))}
+                                    onClick={() => handleDeactivateBiz(biz.id)}
                                     className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                     title="Deactivate Business"
                                   >
@@ -561,7 +606,7 @@ export default function SuperAdminClient({
                                   <button
                                     type="button"
                                     disabled={loadingId === biz.id}
-                                    onClick={() => startTransition(() => handleActivateBiz(biz.id))}
+                                    onClick={() => handleActivateBiz(biz.id)}
                                     className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                     title="Activate Business"
                                   >
@@ -570,11 +615,11 @@ export default function SuperAdminClient({
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => startTransition(() => {
+                                  onClick={() => {
                                     setBizToPermDelete(biz);
                                     setConfirmPermNameInput("");
                                     setPermDeleteModalOpen(true);
-                                  })}
+                                  }}
                                   className="px-2.5 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                   title="Permanently Delete Business"
                                 >
@@ -598,13 +643,18 @@ export default function SuperAdminClient({
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                       {bizMembers.map((m) => {
                                         const prof = profileMap.get(m.user_id);
+                                        const authUsr = authUserMap.get(m.user_id);
+                                        const memEmail = authUsr?.email || prof?.email || "N/A";
+                                        const memPhone = prof?.phone || authUsr?.phone || "N/A";
                                         return (
                                           <div key={m.id} className="p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1">
                                             <div className="flex justify-between items-center">
-                                              <span className="font-extrabold text-white text-xs">{prof?.full_name || `User (${m.user_id.substring(0, 8)})`}</span>
+                                              <span className="font-extrabold text-white text-xs">{prof?.full_name || memEmail}</span>
                                               <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-800 text-indigo-300">{m.role || "STAFF"}</span>
                                             </div>
-                                            <p className="text-[10px] text-slate-400 font-mono">Joined: {formatDate(m.created_at)}</p>
+                                            <p className="text-[10px] text-slate-400">Email: {memEmail}</p>
+                                            <p className="text-[10px] text-slate-400">Phone: {memPhone}</p>
+                                            <p className="text-[10px] text-slate-500 font-mono">Joined: {formatDate(m.created_at)}</p>
                                           </div>
                                         );
                                       })}
@@ -681,7 +731,7 @@ export default function SuperAdminClient({
                               <button
                                 type="button"
                                 disabled={loadingId === sub.id}
-                                onClick={() => startTransition(() => handleReviewPayment(sub.id, "approve"))}
+                                onClick={() => handleReviewPayment(sub.id, "approve")}
                                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer shadow-sm"
                               >
                                 Approve
@@ -689,7 +739,7 @@ export default function SuperAdminClient({
                               <button
                                 type="button"
                                 disabled={loadingId === sub.id}
-                                onClick={() => startTransition(() => handleReviewPayment(sub.id, "reject"))}
+                                onClick={() => handleReviewPayment(sub.id, "reject")}
                                 className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer shadow-sm"
                               >
                                 Reject
@@ -749,11 +799,11 @@ export default function SuperAdminClient({
                     return (
                       <div
                         key={p.id}
-                        onClick={() => startTransition(() => {
+                        onClick={() => {
                           setEditPlanId(p.id as any);
                           setEditAmount(p.amount);
                           setEditMemberLimit(p.defaultLimit);
-                        })}
+                        }}
                         className={`p-3 rounded-2xl border cursor-pointer text-center transition ${
                           isSelected ? "bg-indigo-600/20 border-indigo-500 text-white font-bold" : "bg-slate-800/50 border-slate-700 text-slate-400"
                         }`}
@@ -863,7 +913,7 @@ export default function SuperAdminClient({
               <button
                 type="button"
                 disabled={permDeleting || confirmPermNameInput.trim().toLowerCase() !== bizToPermDelete.name.trim().toLowerCase()}
-                onClick={() => startTransition(() => handlePermDeleteConfirm())}
+                onClick={handlePermDeleteConfirm}
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
               >
                 {permDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Permanently Delete"}
