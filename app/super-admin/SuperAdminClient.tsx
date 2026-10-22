@@ -32,6 +32,7 @@ import {
   Package,
   Play,
   Pause,
+  AlertTriangle,
 } from "lucide-react";
 import {
   superAdminLogout,
@@ -39,6 +40,7 @@ import {
   adminActivateBusinessAction,
   adminDeactivateBusinessAction,
   adminArchiveBusinessAction,
+  adminPermanentlyDeleteBusinessAction,
 } from "./actions";
 
 export interface Props {
@@ -91,11 +93,17 @@ export default function SuperAdminClient({
   const [editMemberLimit, setEditMemberLimit] = useState<number>(5);
   const [editAdminNote, setEditAdminNote] = useState("");
 
-  // Archive / Delete Business Modal State
+  // Archive / Soft Delete Business Modal State
   const [archiveBizModalOpen, setArchiveBizModalOpen] = useState(false);
   const [bizToArchive, setBizToArchive] = useState<any | null>(null);
   const [confirmBizNameInput, setConfirmBizNameInput] = useState("");
   const [archivingBiz, setArchivingBiz] = useState(false);
+
+  // Permanent Delete Business Modal State
+  const [permDeleteModalOpen, setPermDeleteModalOpen] = useState(false);
+  const [bizToPermDelete, setBizToPermDelete] = useState<any | null>(null);
+  const [confirmPermNameInput, setConfirmPermNameInput] = useState("");
+  const [permDeleting, setPermDeleting] = useState(false);
 
   const plansList = [
     { id: "basic", label: "Basic Plan", amount: 99, defaultLimit: 5, desc: "Essential POS billing & stock management" },
@@ -224,9 +232,35 @@ export default function SuperAdminClient({
       }
     } catch (err: any) {
       console.error("Archive error:", err);
-      setErrorMsg(err.message || "Failed to delete/archive business.");
+      setErrorMsg(err.message || "Failed to archive business.");
       setArchivingBiz(false);
       setArchiveBizModalOpen(false);
+    }
+  };
+
+  const handlePermDeleteConfirm = async () => {
+    if (!bizToPermDelete) return;
+    setPermDeleting(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await adminPermanentlyDeleteBusinessAction({
+        businessId: bizToPermDelete.id,
+        confirmName: confirmPermNameInput,
+      });
+      if (res && res.success) {
+        setSuccessMsg(res.message);
+        setPermDeleteModalOpen(false);
+        setBizToPermDelete(null);
+        setConfirmPermNameInput("");
+        setTimeout(() => setSuccessMsg(""), 5000);
+        await handleRefresh();
+      }
+    } catch (err: any) {
+      console.error("Permanent deletion error:", err);
+      setErrorMsg(err.message || "Failed to permanently delete business.");
+      setPermDeleting(false);
+      setPermDeleteModalOpen(false);
     }
   };
 
@@ -569,12 +603,12 @@ export default function SuperAdminClient({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setBizToArchive(biz);
-                                    setConfirmBizNameInput("");
-                                    setArchiveBizModalOpen(true);
+                                    setBizToPermDelete(biz);
+                                    setConfirmPermNameInput("");
+                                    setPermDeleteModalOpen(true);
                                   }}
                                   className="px-2.5 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                                  title="Archive / Delete Business"
+                                  title="Permanently Delete Business"
                                 >
                                   <Trash2 className="w-3 h-3" /> Delete
                                 </button>
@@ -823,27 +857,29 @@ export default function SuperAdminClient({
         </div>
       )}
 
-      {/* ARCHIVE / DELETE BUSINESS CONFIRMATION MODAL */}
-      {archiveBizModalOpen && bizToArchive && (
+      {/* PERMANENT DELETE BUSINESS CONFIRMATION MODAL */}
+      {permDeleteModalOpen && bizToPermDelete && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-5 text-xs text-slate-100">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-base font-black text-white">Archive / Delete Business</h3>
-              <button onClick={() => setArchiveBizModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="w-5 h-5" /></button>
+              <h3 className="text-base font-black text-rose-400 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" /> Permanently Delete Business
+              </h3>
+              <button onClick={() => setPermDeleteModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="w-5 h-5" /></button>
             </div>
 
-            <div className="space-y-2 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
-              <p className="text-slate-300 font-semibold">
-                You are about to archive/delete business <strong className="text-white font-bold">{bizToArchive.name}</strong>.
+            <div className="space-y-2 bg-rose-950/20 p-4 rounded-2xl border border-rose-900/40">
+              <p className="text-slate-200 font-semibold">
+                You are about to <strong className="text-rose-400 font-bold">permanently delete</strong> business <strong className="text-white font-bold">{bizToPermDelete.name}</strong> along with all associated database records and storage files.
               </p>
               <p className="text-[11px] text-amber-400">
-                To confirm permanent archival, please type the exact business name (<strong className="text-white">{bizToArchive.name}</strong>) below:
+                Warning: This action is destructive and irreversible. To confirm, please type the exact business name (<strong className="text-white">{bizToPermDelete.name}</strong>) below:
               </p>
               <input
                 type="text"
-                placeholder={`Type "${bizToArchive.name}" to confirm`}
-                value={confirmBizNameInput}
-                onChange={(e) => setConfirmBizNameInput(e.target.value)}
+                placeholder={`Type "${bizToPermDelete.name}" to confirm`}
+                value={confirmPermNameInput}
+                onChange={(e) => setConfirmPermNameInput(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-bold text-white outline-none focus:border-rose-500 h-11"
               />
             </div>
@@ -851,18 +887,18 @@ export default function SuperAdminClient({
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setArchiveBizModalOpen(false)}
+                onClick={() => setPermDeleteModalOpen(false)}
                 className="flex-1 py-3 border border-slate-700 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 cursor-pointer min-h-[44px]"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={archivingBiz || confirmBizNameInput.trim().toLowerCase() !== bizToArchive.name.trim().toLowerCase()}
-                onClick={handleArchiveConfirm}
+                disabled={permDeleting || confirmPermNameInput.trim().toLowerCase() !== bizToPermDelete.name.trim().toLowerCase()}
+                onClick={handlePermDeleteConfirm}
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
               >
-                {archivingBiz ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm Archive"}
+                {permDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Permanently Delete"}
               </button>
             </div>
           </div>

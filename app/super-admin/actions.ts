@@ -122,7 +122,6 @@ export async function adminActivateBusinessAction(input: { businessId: string })
 
   const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-  // Fetch current subscription to check existing expiry without duplicate extensions
   const { data: sub } = await supabaseAdmin
     .from("subscriptions")
     .select("current_period_end")
@@ -133,7 +132,6 @@ export async function adminActivateBusinessAction(input: { businessId: string })
   const baseDate = currentEnd > new Date() ? currentEnd : new Date();
   const newEnd = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Activate business access. Note: payment_status is strictly preserved and NOT marked approved automatically.
   const { error } = await supabaseAdmin
     .from("subscriptions")
     .update({
@@ -146,7 +144,7 @@ export async function adminActivateBusinessAction(input: { businessId: string })
   if (error) throw new Error(error.message);
 
   revalidatePath("/super-admin");
-  return { success: true, message: "Business subscription activated successfully (payment status preserved)." };
+  return { success: true, message: "Business subscription activated successfully." };
 }
 
 export async function adminDeactivateBusinessAction(input: { businessId: string }) {
@@ -163,7 +161,6 @@ export async function adminDeactivateBusinessAction(input: { businessId: string 
 
   const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-  // Set subscription status to expired to block access via server-side subscription guards
   const { error } = await supabaseAdmin
     .from("subscriptions")
     .update({
@@ -204,7 +201,6 @@ export async function adminArchiveBusinessAction(input: { businessId: string; co
     throw new Error("Business name confirmation does not match.");
   }
 
-  // Soft archive / cancel subscription to preserve transactional data and payment history
   const { error } = await supabaseAdmin
     .from("subscriptions")
     .update({
@@ -217,4 +213,58 @@ export async function adminArchiveBusinessAction(input: { businessId: string; co
 
   revalidatePath("/super-admin");
   return { success: true, message: "Business successfully archived and subscription cancelled." };
+}
+
+export async function adminPermanentlyDeleteBusinessAction(input: { businessId: string; confirmName: string }) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Authentication required.");
+
+  const { data: isSuper, error: rpcError } = await supabase.rpc("is_super_admin", { p_user_id: user.id });
+  if (rpcError || !isSuper) throw new Error("Access Denied: Super Owner authorization required.");
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!serviceRoleKey || !supabaseUrl) throw new Error("Server configuration error.");
+
+  const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+  const { data: biz, error: bizErr } = await supabaseAdmin
+    .from("businesses")
+    .select("id, name")
+    .eq("id", input.businessId)
+    .single();
+
+  if (bizErr || !biz) throw new Error("Business not found.");
+
+  if (biz.name.trim().toLowerCase() !== input.confirmName.trim().toLowerCase()) {
+    throw new Error("Business name confirmation does not match. Permanent deletion aborted.");
+  }
+
+  // Storage cleanup (attempt removing files from common buckets)
+  const buckets = ["products", "bills", "receipts", "avatars"];
+  for (const bucket of buckets) {
+    try {
+      const { data: listData } = await supabaseAdmin.storage.from(bucket).list(input.businessId);
+      if (listData && listData.length > 0) {
+        const filePaths = listData.map((f: any) => `${input.businessId}/${f.name}`);
+        await supabaseAdmin.storage.from(bucket).remove(filePaths);
+      }
+    } catch (storageErr) {
+      console.warn(`Storage cleanup notice for bucket ${bucket}:`, storageErr);
+    }
+  }
+
+  // Permanently delete business record (cascades to all dependent database records via ON DELETE CASCADE)
+  const { error: delBizErr } = await supabaseAdmin
+    .from("businesses")
+    .delete()
+    .eq("id", input.businessId);
+
+  if (delBizErr) {
+    throw new Error(`Failed to permanently delete business: ${delBizErr.message}`);
+  }
+
+  revalidatePath("/super-admin");
+  return { success: true, message: `Business "${biz.name}" and all associated data and storage files have been permanently deleted.` };
 }
