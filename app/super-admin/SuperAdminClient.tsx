@@ -35,6 +35,7 @@ interface Props {
   initialSubscriptions: any[];
   initialMembers?: any[];
   initialProfiles?: any[];
+  initialUsers?: any[];
 }
 
 export default function SuperAdminClient({
@@ -43,12 +44,14 @@ export default function SuperAdminClient({
   initialSubscriptions,
   initialMembers = [],
   initialProfiles = [],
+  initialUsers = [],
 }: Props) {
   const [supabase] = useState(() => createClient());
   const [businesses, setBusinesses] = useState<any[]>(initialBusinesses || []);
   const [subscriptions, setSubscriptions] = useState<any[]>(initialSubscriptions || []);
   const [members, setMembers] = useState<any[]>(initialMembers || []);
   const [profiles, setProfiles] = useState<any[]>(initialProfiles || []);
+  const [users, setUsers] = useState<any[]>(initialUsers || []);
 
   const [activeTab, setActiveTab] = useState<"businesses" | "users">("businesses");
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,27 +76,7 @@ export default function SuperAdminClient({
   ];
 
   const handleRefresh = async () => {
-    setErrorMsg("");
-    setSuccessMsg("Refreshing data...");
-    try {
-      const [bizRes, subRes, memRes, profRes] = await Promise.all([
-        supabase.from("businesses").select("*").order("created_at", { ascending: false }),
-        supabase.from("subscriptions").select("*"),
-        supabase.from("business_members").select("*"),
-        supabase.from("profiles").select("*"),
-      ]);
-
-      setBusinesses(bizRes.data || []);
-      setSubscriptions(subRes.data || []);
-      setMembers(memRes.data || []);
-      setProfiles(profRes.data || []);
-
-      setSuccessMsg("Data refreshed successfully!");
-      setTimeout(() => setSuccessMsg(""), 3000);
-    } catch (err: any) {
-      console.error("Refresh error:", err);
-      setErrorMsg("Failed to refresh data.");
-    }
+    window.location.reload();
   };
 
   const handleManualActivate = async (e: React.FormEvent) => {
@@ -133,9 +116,6 @@ export default function SuperAdminClient({
   const subMap = new Map(subscriptions.map((s) => [s.business_id, s]));
   const businessMap = new Map(businesses.map((b) => [b.id, b]));
 
-  // Distinct global users count
-  const globalUniqueUsers = new Set(members.map((m) => m.user_id));
-
   // Map members by business_id
   const membersByBiz = new Map<string, any[]>();
   for (const m of members) {
@@ -145,24 +125,11 @@ export default function SuperAdminClient({
     membersByBiz.get(m.business_id)!.push(m);
   }
 
-  // Map user memberships by user_id
-  const bizByUser = new Map<string, any[]>();
-  for (const m of members) {
-    const biz = businessMap.get(m.business_id);
-    if (biz) {
-      if (!bizByUser.has(m.user_id)) {
-        bizByUser.set(m.user_id, []);
-      }
-      bizByUser.get(m.user_id)!.push({ business: biz, role: m.role });
-    }
-  }
-
   const filteredBusinesses = businesses.filter((b) => {
     const sub = subMap.get(b.id);
     const status = sub?.payment_status || "none";
     const matchesStatus = statusFilter === "ALL" || status.toUpperCase() === statusFilter.toUpperCase();
     const query = searchQuery.toLowerCase().trim();
-    const ownerBizMembers = membersByBiz.get(b.id) || [];
 
     const matchesSearch =
       !query ||
@@ -173,13 +140,14 @@ export default function SuperAdminClient({
     return matchesStatus && matchesSearch;
   });
 
-  const filteredProfiles = profiles.filter((p) => {
+  const filteredUsers = users.filter((u) => {
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
     return (
-      (p.full_name || "").toLowerCase().includes(query) ||
-      (p.phone || "").toLowerCase().includes(query) ||
-      p.id.toLowerCase().includes(query)
+      (u.full_name || "").toLowerCase().includes(query) ||
+      (u.email || "").toLowerCase().includes(query) ||
+      (u.phone || "").toLowerCase().includes(query) ||
+      u.id.toLowerCase().includes(query)
     );
   });
 
@@ -250,7 +218,7 @@ export default function SuperAdminClient({
               <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Platform Users</span>
               <Users className="w-4 h-4 text-indigo-400" />
             </div>
-            <h3 className="text-2xl font-black text-indigo-400">{profiles.length}</h3>
+            <h3 className="text-2xl font-black text-indigo-400">{users.length}</h3>
           </div>
 
           <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
@@ -290,7 +258,7 @@ export default function SuperAdminClient({
               activeTab === "users" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
             }`}
           >
-            <UserCheck className="w-4 h-4" /> Platform Users & Admins ({profiles.length})
+            <UserCheck className="w-4 h-4" /> Platform Users & Admins ({users.length})
           </button>
         </div>
 
@@ -300,7 +268,7 @@ export default function SuperAdminClient({
             <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder={activeTab === "businesses" ? "Search business or city..." : "Search user name or phone..."}
+              placeholder={activeTab === "businesses" ? "Search business or city..." : "Search user name, email or phone..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 h-11"
@@ -483,18 +451,18 @@ export default function SuperAdminClient({
         {activeTab === "users" && (
           <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
             <div className="p-5 border-b border-slate-800 flex justify-between items-center">
-              <h3 className="text-sm font-black text-white uppercase tracking-wider">All Registered Platform Users & Admins</h3>
-              <span className="text-xs text-slate-400 font-bold">{filteredProfiles.length} records</span>
+              <h3 className="text-sm font-black text-white uppercase tracking-wider">All Registered Platform Users & Admins (Auth & Profiles)</h3>
+              <span className="text-xs text-slate-400 font-bold">{filteredUsers.length} records</span>
             </div>
 
-            {filteredProfiles.length === 0 ? (
-              <div className="p-12 text-center text-xs text-slate-400">No registered profiles found matching filter.</div>
+            {filteredUsers.length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-400">No registered platform users found matching filter.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs text-slate-300">
                   <thead className="bg-slate-950/60 text-[11px] text-slate-400 uppercase border-b border-slate-800">
                     <tr>
-                      <th className="p-4">User Name / Profile</th>
+                      <th className="p-4">User Name / Email</th>
                       <th className="p-4">Mobile Phone</th>
                       <th className="p-4">Account Status & Associations</th>
                       <th className="p-4">Associated Businesses & Roles</th>
@@ -502,19 +470,20 @@ export default function SuperAdminClient({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
-                    {filteredProfiles.map((prof) => {
-                      const userBizList = bizByUser.get(prof.id) || [];
-                      const isOwnerAnywhere = businesses.some((b) => b.owner_id === prof.id);
-                      const isMemberAnywhere = userBizList.length > 0;
+                    {filteredUsers.map((u) => {
+                      const memberships = u.memberships || [];
+                      const isOwnerAnywhere = u.is_owner;
+                      const isMemberAnywhere = memberships.length > 0;
 
                       return (
-                        <tr key={prof.id} className="hover:bg-slate-800/50">
+                        <tr key={u.id} className="hover:bg-slate-800/50">
                           <td className="p-4 font-black text-white">
-                            {prof.full_name || "Unnamed User"}
-                            <span className="block text-[10px] text-slate-500 font-mono">ID: {prof.id}</span>
+                            {u.full_name}
+                            <span className="block text-[11px] text-indigo-400 font-mono font-bold">{u.email}</span>
+                            <span className="block text-[9px] text-slate-500 font-mono">ID: {u.id}</span>
                           </td>
                           <td className="p-4 font-mono font-bold text-amber-400">
-                            {prof.phone || <span className="text-slate-500 italic">Not provided</span>}
+                            {u.phone || <span className="text-slate-500 italic">Not provided</span>}
                           </td>
                           <td className="p-4">
                             {isOwnerAnywhere ? (
@@ -532,15 +501,15 @@ export default function SuperAdminClient({
                             )}
                           </td>
                           <td className="p-4">
-                            {userBizList.length === 0 ? (
+                            {memberships.length === 0 ? (
                               <span className="text-slate-500 italic">None (Unassigned)</span>
                             ) : (
                               <div className="space-y-1">
-                                {userBizList.map((item, idx) => (
+                                {memberships.map((m: any, idx: number) => (
                                   <div key={idx} className="flex items-center gap-2">
-                                    <span className="font-extrabold text-white">{item.business.name}</span>
+                                    <span className="font-extrabold text-white">{m.business?.name || "Store"}</span>
                                     <span className="px-2 py-0.5 bg-slate-800 text-indigo-300 rounded text-[9px] font-black uppercase">
-                                      {item.role}
+                                      {m.role}
                                     </span>
                                   </div>
                                 ))}
@@ -548,7 +517,7 @@ export default function SuperAdminClient({
                             )}
                           </td>
                           <td className="p-4 text-slate-300 font-bold">
-                            {prof.created_at ? new Date(prof.created_at).toLocaleDateString() : "N/A"}
+                            {u.created_at ? new Date(u.created_at).toLocaleDateString() : "N/A"}
                           </td>
                         </tr>
                       );
