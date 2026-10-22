@@ -104,7 +104,7 @@ export default function SuperAdminClient({
       if (error) throw error;
       if (data && data.success === false) throw new Error(data.error || "Activation failed");
 
-      setSuccessMsg(`Plan successfully activated! Expiry extended to: ${new Date(data.current_period_end).toLocaleDateString()}`);
+      setSuccessMsg(`Plan successfully activated! Expiry extended to: ${formatDate(data.current_period_end)}`);
       setActivateModalSub(null);
       setAdminPaymentNote("");
       setConfirmPaymentReceived(false);
@@ -397,7 +397,7 @@ export default function SuperAdminClient({
                             <td className="p-4 font-black text-white">
                               {biz.name}
                               <span className="block text-[10px] text-slate-400 font-normal">
-                                Type: {biz.business_type || "Store"} • Reg: {new Date(biz.created_at).toLocaleDateString()}
+                                Type: {biz.business_type || "Store"} • Reg: {formatDate(biz.created_at)}
                               </span>
                             </td>
                             <td className="p-4">
@@ -427,7 +427,7 @@ export default function SuperAdminClient({
                               </span>
                             </td>
                             <td className="p-4 text-slate-300 font-bold">
-                              {sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : "N/A"}
+                              {formatDate(sub?.current_period_end)}
                             </td>
                             <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-center gap-2">
@@ -508,7 +508,7 @@ export default function SuperAdminClient({
                                               <p className="text-[10px] text-slate-400">Phone: {prof.phone}</p>
                                             )}
                                             <p className="text-[10px] text-slate-500 font-mono">
-                                              Joined: {m.created_at ? new Date(m.created_at).toLocaleDateString() : "N/A"}
+                                              Joined: {formatDate(m.created_at)}
                                             </p>
                                           </div>
                                         );
@@ -600,7 +600,7 @@ export default function SuperAdminClient({
                             )}
                           </td>
                           <td className="p-4 text-slate-300 font-bold">
-                            {u.created_at ? new Date(u.created_at).toLocaleDateString() : "N/A"}
+                            {formatDate(u.created_at)}
                           </td>
                           <td className="p-4 text-center">
                             <button
@@ -632,7 +632,7 @@ export default function SuperAdminClient({
           <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-5 text-xs text-slate-100">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="text-base font-black text-white">Delete Platform User Account</h3>
-              <button onClick={() => setDeleteUserModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
+              <button onClick={() => setDeleteUserModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="w-5 h-5" /></button>
             </div>
 
             <div className="space-y-2 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
@@ -753,4 +753,15 @@ export default function SuperAdminClient({
 
 function lowerRole(role: any) {
   return String(role || "").toLowerCase();
+}
+
+function formatDate(val: any) {
+  if (!val) return "N/A";
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val);
+    return d.toISOString().split("T")[0];
+  } catch {
+    return String(val);
+  }
 }
