@@ -26,8 +26,10 @@ import {
   Mail,
   Shield,
   UserCheck,
+  Trash2,
+  Loader2,
 } from "lucide-react";
-import { superAdminLogout } from "./actions";
+import { superAdminLogout, deletePlatformUserAction } from "./actions";
 
 interface Props {
   adminEmail: string;
@@ -69,6 +71,11 @@ export default function SuperAdminClient({
   const [adminPaymentNote, setAdminPaymentNote] = useState("");
   const [confirmPaymentReceived, setConfirmPaymentReceived] = useState(false);
 
+  // Delete User Modal State
+  const [deleteUserModalOpen, setDeleteUserModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
+
   const plansList = [
     { id: "basic", label: "Basic Plan", amount: "₹99/mo", desc: "Essential POS billing & stock management" },
     { id: "pro", label: "Pro Plan", amount: "₹250/mo", desc: "Advanced multi-counter inventory & staff management" },
@@ -109,6 +116,54 @@ export default function SuperAdminClient({
       setErrorMsg(err.message || "Failed to activate subscription.");
     } finally {
       setLoadingId(null);
+    }
+  };
+
+  const handleReviewPayment = async (subId: string, action: "approve" | "reject") => {
+    setLoadingId(subId);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const { data, error } = await supabase.rpc("admin_review_subscription_payment", {
+        p_subscription_id: subId,
+        p_action: action,
+      });
+
+      if (error) throw error;
+      if (data && data.success === false) throw new Error(data.error || "Action failed");
+
+      setSuccessMsg(`Subscription payment successfully ${action}d!`);
+      setTimeout(() => setSuccessMsg(""), 4000);
+
+      await handleRefresh();
+    } catch (err: any) {
+      console.error("Admin review error:", err);
+      setErrorMsg(err.message || "Failed to process review action.");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleDeleteUserConfirm = async () => {
+    if (!userToDelete) return;
+    setDeletingUser(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const res = await deletePlatformUserAction({ userId: userToDelete.id });
+      if (res && res.success) {
+        setSuccessMsg(res.message || "User deleted successfully.");
+        setDeleteUserModalOpen(false);
+        setUserToDelete(null);
+        await handleRefresh();
+      }
+    } catch (err: any) {
+      console.error("Failed to delete user:", err);
+      setErrorMsg(err.message || "Failed to delete user account.");
+      setDeleteUserModalOpen(false);
+      setDeletingUser(false);
     }
   };
 
@@ -314,7 +369,7 @@ export default function SuperAdminClient({
                       <th className="p-4">Plan & Amount</th>
                       <th className="p-4">Payment Status</th>
                       <th className="p-4">Expiry Date</th>
-                      <th className="p-4 text-center">Actions / Activation</th>
+                      <th className="p-4 text-center">Actions / Approvals</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -375,19 +430,46 @@ export default function SuperAdminClient({
                               {sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : "N/A"}
                             </td>
                             <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                              {sub ? (
-                                <button
-                                  type="button"
-                                  disabled={loadingId === sub.id}
-                                  onClick={() => setActivateModalSub({ ...sub, business_name: biz.name })}
-                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                                  title="Activate / Renew Subscription"
-                                >
-                                  <Zap className="w-3.5 h-3.5" /> Activate / Renew
-                                </button>
-                              ) : (
-                                <span className="text-slate-500 text-[11px]">No subscription</span>
-                              )}
+                              <div className="flex items-center justify-center gap-2">
+                                {sub ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={loadingId === sub.id}
+                                      onClick={() => setActivateModalSub({ ...sub, business_name: biz.name })}
+                                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                      title="Activate / Renew Subscription"
+                                    >
+                                      <Zap className="w-3.5 h-3.5" /> Activate / Renew
+                                    </button>
+
+                                    {isPending && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          disabled={loadingId === sub.id}
+                                          onClick={() => handleReviewPayment(sub.id, "approve")}
+                                          className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer shadow-sm"
+                                          title="Approve UTR Payment"
+                                        >
+                                          Approve
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={loadingId === sub.id}
+                                          onClick={() => handleReviewPayment(sub.id, "reject")}
+                                          className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer shadow-sm"
+                                          title="Reject Payment"
+                                        >
+                                          Reject
+                                        </button>
+                                      </>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-slate-500 text-[11px]">No subscription</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
 
@@ -467,6 +549,7 @@ export default function SuperAdminClient({
                       <th className="p-4">Account Status & Associations</th>
                       <th className="p-4">Associated Businesses & Roles</th>
                       <th className="p-4">Registration Date</th>
+                      <th className="p-4 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -519,6 +602,19 @@ export default function SuperAdminClient({
                           <td className="p-4 text-slate-300 font-bold">
                             {u.created_at ? new Date(u.created_at).toLocaleDateString() : "N/A"}
                           </td>
+                          <td className="p-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserToDelete(u);
+                                setDeleteUserModalOpen(true);
+                              }}
+                              className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                              title="Delete User Account"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Delete
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -529,6 +625,45 @@ export default function SuperAdminClient({
           </div>
         )}
       </main>
+
+      {/* DELETE USER CONFIRMATION MODAL */}
+      {deleteUserModalOpen && userToDelete && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-5 text-xs text-slate-100">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white">Delete Platform User Account</h3>
+              <button onClick={() => setDeleteUserModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="space-y-2 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+              <p className="text-slate-300 font-semibold">
+                You are about to permanently delete user account <strong className="text-white font-bold">{userToDelete.email}</strong> ({userToDelete.full_name}).
+              </p>
+              <p className="text-[11px] text-amber-400">
+                Warning: This action will delete the Supabase Auth account and is irreversible. Users who own active businesses cannot be deleted until their businesses are reassigned or deleted.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteUserModalOpen(false)}
+                className="flex-1 py-3 border border-slate-700 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 cursor-pointer min-h-[44px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingUser}
+                onClick={handleDeleteUserConfirm}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
+              >
+                {deletingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MANUAL SUBSCRIPTION ACTIVATION MODAL */}
       {activateModalSub && (
