@@ -155,13 +155,26 @@ export default function SuperAdminClient({
       if (error) throw error;
       if (data && data.success === false) throw new Error(data.error || "Update failed");
 
-      const { error: updateErr } = await supabase
+      let updateErr = null;
+      const res1 = await supabase
         .from("subscriptions")
         .update({
           amount: editAmount,
           member_limit: editMemberLimit,
         })
         .eq("id", subId);
+      updateErr = res1.error;
+
+      if (updateErr && (updateErr.message?.includes("member_limit") || updateErr.code === "PGRST204" || updateErr.code === "42703")) {
+        console.warn("member_limit column pending migration; updating amount only.");
+        const res2 = await supabase
+          .from("subscriptions")
+          .update({
+            amount: editAmount,
+          })
+          .eq("id", subId);
+        updateErr = res2.error;
+      }
 
       if (updateErr) throw updateErr;
 
