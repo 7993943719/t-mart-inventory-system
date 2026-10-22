@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import SuperAdminClient from "./SuperAdminClient";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function SuperAdminPage() {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
