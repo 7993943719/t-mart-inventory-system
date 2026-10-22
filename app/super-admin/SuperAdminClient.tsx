@@ -40,7 +40,7 @@ export interface Props {
   initialMembers?: any[];
   initialProfiles?: any[];
   initialSuperAdmins?: any[];
-  initialUsers?: any[];
+  initialAuthUsers?: any[];
 }
 
 export default function SuperAdminClient({
@@ -50,7 +50,7 @@ export default function SuperAdminClient({
   initialMembers = [],
   initialProfiles = [],
   initialSuperAdmins = [],
-  initialUsers = [],
+  initialAuthUsers = [],
 }: Props) {
   const [supabase] = useState(() => createClient());
   const [businesses, setBusinesses] = useState<any[]>(initialBusinesses || []);
@@ -58,13 +58,14 @@ export default function SuperAdminClient({
   const [members, setMembers] = useState<any[]>(initialMembers || []);
   const [profiles, setProfiles] = useState<any[]>(initialProfiles || []);
   const [superAdmins, setSuperAdmins] = useState<any[]>(initialSuperAdmins || []);
-  const [users, setUsers] = useState<any[]>(initialUsers || []);
+  const [authUsers, setAuthUsers] = useState<any[]>(initialAuthUsers || []);
 
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
+  const [activeSection, setActiveSection] = useState<"businesses" | "plans" | "payments" | "admins">("businesses");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -81,10 +82,6 @@ export default function SuperAdminClient({
   const [editAmount, setEditAmount] = useState<number>(99);
   const [editMemberLimit, setEditMemberLimit] = useState<number>(5);
   const [editAdminNote, setEditAdminNote] = useState("");
-
-  // Super Admin Management State
-  const [newAdminEmail, setNewAdminEmail] = useState("");
-  const [addingAdmin, setAddingAdmin] = useState(false);
 
   const plansList = [
     { id: "basic", label: "Basic Plan", amount: 99, defaultLimit: 5, desc: "Essential POS billing & stock management" },
@@ -196,21 +193,27 @@ export default function SuperAdminClient({
 
   const filteredBusinesses = businesses.filter((b) => {
     const sub = subMap.get(b.id);
-    const payStatus = sub?.payment_status || "none";
-    const matchesStatus = statusFilter === "ALL" || payStatus.toUpperCase() === statusFilter.toUpperCase();
-    const query = searchQuery.toLowerCase().trim();
+    const payStatus = (sub?.payment_status || "none").toLowerCase();
 
+    if (statusFilter === "ALL") return true;
+
+    if (statusFilter === "NONE") {
+      return !sub || payStatus === "none" || payStatus === "";
+    }
+
+    return payStatus === statusFilter.toLowerCase();
+  }).filter((b) => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
     const ownerProf = profileMap.get(b.owner_id);
     const ownerName = ownerProf?.full_name || "";
 
-    const matchesSearch =
-      !query ||
+    return (
       b.name.toLowerCase().includes(query) ||
       (b.city || "").toLowerCase().includes(query) ||
       (b.phone || "").toLowerCase().includes(query) ||
-      ownerName.toLowerCase().includes(query);
-
-    return matchesStatus && matchesSearch;
+      ownerName.toLowerCase().includes(query)
+    );
   });
 
   const pendingPaymentsList = subscriptions.filter((s) => s.payment_status === "pending");
@@ -220,6 +223,7 @@ export default function SuperAdminClient({
   }).length;
   const pendingOrInactiveCount = businesses.length - activeBusinessesCount;
   const activeSubsCount = subscriptions.filter((s) => s.status === "active").length;
+  const totalPlatformUsers = authUsers.length > 0 ? authUsers.length : profiles.length;
 
   if (!isMounted) {
     return <div className="min-h-screen bg-slate-950 text-slate-400 flex items-center justify-center text-xs">Loading Super Owner Panel...</div>;
@@ -308,7 +312,7 @@ export default function SuperAdminClient({
               <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Platform Users</span>
               <Users className="w-4 h-4 text-indigo-400" />
             </div>
-            <h3 className="text-2xl font-black text-indigo-400">{users.length}</h3>
+            <h3 className="text-2xl font-black text-indigo-400">{totalPlatformUsers}</h3>
           </div>
 
           <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
@@ -401,7 +405,7 @@ export default function SuperAdminClient({
                       const isRejected = payStatus === "rejected";
 
                       const bizMembers = membersByBiz.get(biz.id) || [];
-                      const ownerProfile = profiles.find((p) => p.id === biz.owner_id);
+                      const ownerProfile = profileMap.get(biz.owner_id);
                       const ownerEmail = ownerProfile?.full_name || biz.phone || "Owner";
 
                       const memberLimit = Number(sub?.member_limit || 5);

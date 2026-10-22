@@ -26,28 +26,28 @@ export default async function SuperAdminPage() {
 
     const adminEmail = user.email || "superadmin@tweb.app";
 
-    // Fetch standard data from client
-    const [bizRes, subRes, membersRes, profRes, superAdminsRes] = await Promise.all([
-      supabase.from("businesses").select("*").order("created_at", { ascending: false }),
-      supabase.from("subscriptions").select("*"),
-      supabase.from("business_members").select("*"),
-      supabase.from("profiles").select("*"),
-      supabase.from("super_admins").select("*"),
-    ]);
-
-    // Fetch all registered Auth users using server-only service role client with full pagination
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
     if (!serviceRoleKey || !supabaseUrl) {
-      throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required to list platform users securely.");
+      throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for super admin data access.");
     }
 
-    let allAuthUsers: any[] = [];
     const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     });
 
+    // Fetch all global platform data securely bypassing tenant RLS using the server-only admin client
+    const [bizRes, subRes, membersRes, profRes, superAdminsRes] = await Promise.all([
+      supabaseAdmin.from("businesses").select("*").order("created_at", { ascending: false }),
+      supabaseAdmin.from("subscriptions").select("*"),
+      supabaseAdmin.from("business_members").select("*"),
+      supabaseAdmin.from("profiles").select("*"),
+      supabaseAdmin.from("super_admins").select("*"),
+    ]);
+
+    // Fetch all registered Auth users with full pagination
+    let allAuthUsers: any[] = [];
     let page = 1;
     const perPage = 1000;
     let fetching = true;
@@ -57,7 +57,8 @@ export default async function SuperAdminPage() {
         perPage,
       });
       if (authListErr) {
-        throw new Error(authListErr.message || "Failed to list Supabase Auth users.");
+        console.error("Error listing auth users:", authListErr);
+        break;
       }
       const fetchedUsers = authData?.users || [];
       allAuthUsers.push(...fetchedUsers);
@@ -68,36 +69,6 @@ export default async function SuperAdminPage() {
       }
     }
 
-    const profileMap = new Map((profRes.data || []).map((p: any) => [p.id, p]));
-    const businessMap = new Map((bizRes.data || []).map((b: any) => [b.id, b]));
-
-    const membershipsByUser = new Map<string, any[]>();
-    for (const m of (membersRes.data || [])) {
-      if (!membershipsByUser.has(m.user_id)) {
-        membershipsByUser.set(m.user_id, []);
-      }
-      const biz = businessMap.get(m.business_id);
-      membershipsByUser.get(m.user_id)!.push({ ...m, business: biz });
-    }
-
-    // Combine auth users with profiles and businesses (Each Auth user counted once)
-    const combinedUsers = allAuthUsers.map((u: any) => {
-      const prof = profileMap.get(u.id);
-      const memberships = membershipsByUser.get(u.id) || [];
-      const ownedBiz = (bizRes.data || []).find((b: any) => b.owner_id === u.id);
-      const meta = u.user_metadata || {};
-
-      return {
-        id: u.id,
-        email: u.email || meta.email || "N/A",
-        full_name: prof?.full_name || meta.full_name || meta.name || u.email?.split("@")[0] || "User",
-        phone: prof?.phone || meta.phone || u.phone || (ownedBiz?.phone) || "N/A",
-        created_at: u.created_at,
-        is_owner: !!ownedBiz || memberships.some((m: any) => String(m.role).toLowerCase() === 'owner'),
-        memberships,
-      };
-    });
-
     return (
       <SuperAdminClient
         adminEmail={adminEmail}
@@ -106,7 +77,7 @@ export default async function SuperAdminPage() {
         initialMembers={membersRes.data || []}
         initialProfiles={profRes.data || []}
         initialSuperAdmins={superAdminsRes.data || []}
-        initialUsers={combinedUsers}
+        initialAuthUsers={allAuthUsers}
       />
     );
   } catch (err: any) {
