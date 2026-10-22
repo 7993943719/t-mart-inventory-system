@@ -39,6 +39,7 @@ import {
 interface CartItem {
   product: Product;
   quantity: number;
+  customPrice?: number;
 }
 
 async function getNextInvoiceNumber(supabase: any) {
@@ -324,24 +325,11 @@ export default function BillingPage() {
     }
   };
 
-  // Add Product to Cart
+  // Add Product to Cart (Negative stock supported)
   const addToCart = (product: Product) => {
-    const availStock = Number(product.stock_quantity || 0);
-
-    if (availStock <= 0) {
-      setErrorMsg(`"${product.name}" is out of stock!`);
-      setTimeout(() => setErrorMsg(""), 3000);
-      return;
-    }
-
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
-        if (existing.quantity + 1 > availStock) {
-          setErrorMsg(`Cannot add more "${product.name}". Maximum available stock is ${availStock}.`);
-          setTimeout(() => setErrorMsg(""), 3000);
-          return prev;
-        }
         return prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
@@ -354,7 +342,7 @@ export default function BillingPage() {
     setErrorMsg("");
   };
 
-  // Update Quantity in Cart with Stock Validation
+  // Update Quantity in Cart (Negative stock supported)
   const updateQuantity = (productId: string, newQty: number) => {
     if (newQty <= 0) {
       removeFromCart(productId);
@@ -364,19 +352,24 @@ export default function BillingPage() {
     const item = cart.find((i) => i.product.id === productId);
     if (!item) return;
 
-    const availStock = Number(item.product.stock_quantity || 0);
-    if (newQty > availStock) {
-      setErrorMsg(`Cannot set quantity to ${newQty}. Maximum available stock for "${item.product.name}" is ${availStock}.`);
-      setTimeout(() => setErrorMsg(""), 3500);
-      setCart((prev) =>
-        prev.map((i) => (i.product.id === productId ? { ...i, quantity: availStock } : i))
-      );
-      return;
-    }
-
     setErrorMsg("");
     setCart((prev) =>
       prev.map((i) => (i.product.id === productId ? { ...i, quantity: newQty } : i))
+    );
+  };
+
+  const getItemPrice = (item: CartItem) => {
+    return item.customPrice !== undefined ? item.customPrice : Number(item.product.selling_price || 0);
+  };
+
+  const updatePrice = (productId: string, newPrice: number) => {
+    if (isNaN(newPrice) || newPrice < 0) {
+      setErrorMsg("Selling price cannot be negative.");
+      return;
+    }
+    setErrorMsg("");
+    setCart((prev) =>
+      prev.map((i) => (i.product.id === productId ? { ...i, customPrice: newPrice } : i))
     );
   };
 
@@ -416,7 +409,7 @@ export default function BillingPage() {
   };
 
   // Bill Calculations & GST Tax
-  const subtotal = cart.reduce((sum, item) => sum + Number(item.product.selling_price || 0) * item.quantity, 0);
+  const subtotal = cart.reduce((sum, item) => sum + getItemPrice(item) * item.quantity, 0);
   const tax = gstEnabled ? Math.max(0, (subtotal - Number(discount || 0)) * (taxRate / 100)) : 0;
   const grandTotal = Math.max(0, subtotal - Number(discount || 0) + tax);
 
@@ -468,10 +461,10 @@ export default function BillingPage() {
       const itemsPayload = consolidatedCart.map((item) => ({
         product_id: item.product.id,
         quantity: item.quantity,
-        selling_price: item.product.selling_price,
+        selling_price: getItemPrice(item),
       }));
 
-      // Call database RPC complete_sale_transaction with 10 parameters (including p_amount_paid)
+      // Call database RPC complete_sale_transaction with 10 parameters matching production exactly
       const { data: rpcResult, error: rpcError } = await supabase.rpc("complete_sale_transaction", {
         p_business_id: businessId,
         p_user_id: user.id,
@@ -502,9 +495,9 @@ export default function BillingPage() {
       const saleItemsList = consolidatedCart.map((item) => ({
         product_name: item.product.name,
         unit: item.product.unit,
-        price: Number(item.product.selling_price || 0),
+        price: getItemPrice(item),
         quantity: item.quantity,
-        total: Number((Number(item.product.selling_price || 0) * item.quantity).toFixed(2)),
+        total: Number((getItemPrice(item) * item.quantity).toFixed(2)),
       }));
 
       const receiptData = {
@@ -538,6 +531,7 @@ export default function BillingPage() {
     } catch (err: any) {
       console.error("Sale completion failed:", err);
       setErrorMsg(err.message || "Failed to complete sale transaction.");
+      // Cart is preserved on error as required
     } finally {
       setSubmitting(false);
     }
@@ -688,7 +682,7 @@ export default function BillingPage() {
 
           <div>
             <h1 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
-              New Bill
+              <span>New Bill</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full font-extrabold bg-blue-50 text-blue-700 border border-blue-100 uppercase">
                 {billingStep === "SELECT_PRODUCTS" ? "Step 1: Select Products" : "Step 2: Cart & Payment"}
               </span>
@@ -833,7 +827,7 @@ export default function BillingPage() {
             </div>
           </div>
 
-          {/* CUSTOMER DETAILS SECTION (Placed FIRST at the top) */}
+          {/* 1. CUSTOMER DETAILS SECTION (Placed FIRST at the top) */}
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs mb-2.5 space-y-2">
             <div className="flex justify-between items-center flex-wrap gap-1.5">
               <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -904,7 +898,7 @@ export default function BillingPage() {
             </div>
           </div>
 
-          {/* IMMEDIATELY BELOW CUSTOMER DETAILS: ADD PRODUCT & SEARCH AREA */}
+          {/* 2. IMMEDIATELY BELOW CUSTOMER DETAILS: ADD PRODUCT & SEARCH AREA */}
           <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs mb-2.5 space-y-2.5">
             <div className="flex justify-between items-center">
               <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -968,73 +962,65 @@ export default function BillingPage() {
               </div>
             )}
 
-            {/* SEARCH MATCHES / PRODUCT LIST */}
-            {!searchQuery.trim() ? (
-              <div className="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center space-y-1.5">
-                <Barcode className="w-6 h-6 text-slate-300 mx-auto" />
-                <h4 className="text-xs font-bold text-slate-700">Search products to add</h4>
-                <p className="text-[10px] text-slate-400">Type a product name or scan barcode above to view matching items.</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-                {loading ? (
-                  <div className="p-4 text-center text-xs text-slate-400">Searching catalog...</div>
-                ) : filteredProducts.length === 0 ? (
-                  <div className="p-4 bg-slate-50 rounded-xl border border-dashed text-center text-xs text-slate-400 space-y-1">
-                    <Package className="w-5 h-5 text-slate-300 mx-auto" />
-                    <p className="font-bold text-slate-600 text-xs">No matching products found</p>
-                  </div>
-                ) : (
-                  filteredProducts.map((p) => {
-                    const stockQty = Number(p.stock_quantity || 0);
-                    const isOut = stockQty <= 0;
-                    const formattedPrice = Number(p.selling_price || 0).toFixed(2);
-                    const unitStr = p.unit || "pcs";
+            {/* ALL AVAILABLE PRODUCTS DISPLAYED AS RESPONSIVE PRODUCT CARDS BY DEFAULT */}
+            <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1">
+              {loading ? (
+                <div className="p-4 text-center text-xs text-slate-400">Loading catalog...</div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="p-4 bg-slate-50 rounded-xl border border-dashed text-center text-xs text-slate-400 space-y-1">
+                  <Package className="w-5 h-5 text-slate-300 mx-auto" />
+                  <p className="font-bold text-slate-600 text-xs">No products found</p>
+                </div>
+              ) : (
+                filteredProducts.map((p) => {
+                  const stockQty = Number(p.stock_quantity || 0);
+                  const isOut = stockQty <= 0;
+                  const formattedPrice = Number(p.selling_price || 0).toFixed(2);
+                  const unitStr = p.unit || "pcs";
 
-                    return (
-                      <div
-                        key={p.id}
-                        className="p-2.5 bg-slate-50 hover:bg-blue-50/50 rounded-xl border border-slate-100 flex items-center justify-between text-xs transition group"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
-                          {p.image_url ? (
-                            <img src={p.image_url} alt={p.name} className="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-200" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0 text-xs">
-                              📦
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <h4 className="font-extrabold text-slate-900 group-hover:text-blue-600 transition truncate text-xs">{p.name}</h4>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{p.category || "General"}</span>
+                  return (
+                    <div
+                      key={p.id}
+                      className="p-3 bg-slate-50 hover:bg-blue-50/50 rounded-xl border border-slate-100 flex items-center justify-between text-xs transition group"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                        {p.image_url ? (
+                          <img src={p.image_url} alt={p.name} className="w-9 h-9 rounded-lg object-cover shrink-0 border border-slate-200" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0 text-xs">
+                            📦
                           </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 shrink-0 px-1 text-right">
-                          <div>
-                            <span className="block font-black text-emerald-600 text-xs">₹{formattedPrice}</span>
-                            <span className={`block font-bold text-[9px] ${isOut ? "text-rose-600" : stockQty <= Number(p.minimum_stock || 10) ? "text-amber-600" : "text-slate-500"}`}>
-                              Stock: {stockQty} {unitStr}
-                            </span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => addToCart(p)}
-                            disabled={isOut}
-                            className={`px-3 py-1.5 text-[11px] font-black rounded-lg transition cursor-pointer flex items-center gap-1 min-h-[34px] ${
-                              isOut ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
-                            }`}
-                          >
-                            <Plus className="w-3 h-3" /> ADD
-                          </button>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-extrabold text-slate-900 group-hover:text-blue-600 transition truncate text-xs sm:text-sm">{p.name}</h4>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{p.category || "General"}</span>
                         </div>
                       </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
+
+                      <div className="flex items-center gap-3 shrink-0 px-1 text-right">
+                        <div>
+                          <span className="block font-black text-emerald-600 text-xs sm:text-sm">₹{formattedPrice}</span>
+                          <span className={`block font-bold text-[10px] ${isOut ? "text-rose-600" : stockQty <= Number(p.minimum_stock || 10) ? "text-amber-600" : "text-slate-500"}`}>
+                            Stock: {stockQty} {unitStr}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => addToCart(p)}
+                          disabled={isOut}
+                          className={`px-3.5 py-2 text-xs font-black rounded-xl transition cursor-pointer flex items-center gap-1 min-h-[36px] ${
+                            isOut ? "bg-slate-200 text-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                          }`}
+                        >
+                          <Plus className="w-3.5 h-3.5" /> ADD
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           {/* VIEW CART BUTTON IN STEP 1 */}
@@ -1103,7 +1089,7 @@ export default function BillingPage() {
               ) : (
                 <div className="divide-y divide-slate-200/80 max-h-96 overflow-y-auto pr-1">
                   {cart.map((item) => {
-                    const unitPrice = Number(item.product.selling_price || 0);
+                    const unitPrice = getItemPrice(item);
                     const itemTotal = (unitPrice * item.quantity).toFixed(2);
                     return (
                       <div key={item.product.id} className="py-3 px-1 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs">
@@ -1134,10 +1120,17 @@ export default function BillingPage() {
                             </button>
                           </div>
 
-                          {/* Unit Selling Price */}
-                          <div className="text-right min-w-[60px]">
-                            <span className="text-[9px] font-bold text-slate-400 block uppercase">Price</span>
-                            <span className="font-extrabold text-slate-700 text-xs">₹{unitPrice.toFixed(2)}</span>
+                          {/* Unit Selling Price (Editable by billing staff) */}
+                          <div className="text-right min-w-[75px]">
+                            <span className="text-[9px] font-bold text-slate-400 block uppercase mb-0.5">Price (₹)</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={getItemPrice(item)}
+                              onChange={(e) => updatePrice(item.product.id, Number(e.target.value))}
+                              className="w-16 h-8 bg-slate-50 border border-slate-200 rounded-lg px-1.5 font-bold text-slate-900 text-xs text-right outline-none focus:border-blue-600"
+                            />
                           </div>
 
                           {/* Line Amount */}
