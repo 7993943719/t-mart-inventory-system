@@ -122,12 +122,23 @@ export async function adminActivateBusinessAction(input: { businessId: string })
 
   const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
+  // Fetch current subscription to check existing expiry without duplicate extensions
+  const { data: sub } = await supabaseAdmin
+    .from("subscriptions")
+    .select("current_period_end")
+    .eq("business_id", input.businessId)
+    .maybeSingle();
+
+  const currentEnd = sub?.current_period_end ? new Date(sub.current_period_end) : new Date();
+  const baseDate = currentEnd > new Date() ? currentEnd : new Date();
+  const newEnd = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Activate business access. Note: payment_status is strictly preserved and NOT marked approved automatically.
   const { error } = await supabaseAdmin
     .from("subscriptions")
     .update({
       status: "active",
-      payment_status: "approved",
-      current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      current_period_end: newEnd,
       updated_at: new Date().toISOString(),
     })
     .eq("business_id", input.businessId);
@@ -135,7 +146,7 @@ export async function adminActivateBusinessAction(input: { businessId: string })
   if (error) throw new Error(error.message);
 
   revalidatePath("/super-admin");
-  return { success: true, message: "Business activated successfully." };
+  return { success: true, message: "Business subscription activated successfully (payment status preserved)." };
 }
 
 export async function adminDeactivateBusinessAction(input: { businessId: string }) {
@@ -152,11 +163,11 @@ export async function adminDeactivateBusinessAction(input: { businessId: string 
 
   const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
+  // Set subscription status to expired to block access via server-side subscription guards
   const { error } = await supabaseAdmin
     .from("subscriptions")
     .update({
       status: "expired",
-      payment_status: "rejected",
       updated_at: new Date().toISOString(),
     })
     .eq("business_id", input.businessId);
@@ -164,7 +175,7 @@ export async function adminDeactivateBusinessAction(input: { businessId: string 
   if (error) throw new Error(error.message);
 
   revalidatePath("/super-admin");
-  return { success: true, message: "Business deactivated successfully." };
+  return { success: true, message: "Business successfully deactivated and access suspended." };
 }
 
 export async function adminArchiveBusinessAction(input: { businessId: string; confirmName: string }) {
@@ -193,11 +204,11 @@ export async function adminArchiveBusinessAction(input: { businessId: string; co
     throw new Error("Business name confirmation does not match.");
   }
 
+  // Soft archive / cancel subscription to preserve transactional data and payment history
   const { error } = await supabaseAdmin
     .from("subscriptions")
     .update({
       status: "cancelled",
-      payment_status: "rejected",
       updated_at: new Date().toISOString(),
     })
     .eq("business_id", input.businessId);
@@ -205,5 +216,5 @@ export async function adminArchiveBusinessAction(input: { businessId: string; co
   if (error) throw new Error(error.message);
 
   revalidatePath("/super-admin");
-  return { success: true, message: "Business archived/deleted successfully." };
+  return { success: true, message: "Business successfully archived and subscription cancelled." };
 }
