@@ -21,9 +21,11 @@ export default async function SuperAdminPage() {
 
   const adminEmail = user.email || "superadmin@tweb.app";
 
-  const [bizRes, subRes] = await Promise.all([
+  const [bizRes, subRes, membersRes, profRes] = await Promise.all([
     supabase.from("businesses").select("*").order("created_at", { ascending: false }),
     supabase.from("subscriptions").select("*"),
+    supabase.from("business_members").select("*"),
+    supabase.from("profiles").select("*"),
   ]);
 
   return (
@@ -31,6 +33,8 @@ export default async function SuperAdminPage() {
       adminEmail={adminEmail}
       initialBusinesses={bizRes.data || []}
       initialSubscriptions={subRes.data || []}
+      initialMembers={membersRes.data || []}
+      initialProfiles={profRes.data || []}
     />
   );
 }
