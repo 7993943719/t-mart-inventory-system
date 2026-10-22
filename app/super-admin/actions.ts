@@ -107,3 +107,103 @@ export async function deletePlatformUserAction(input: { userId: string }) {
   revalidatePath("/super-admin");
   return { success: true, message: "Platform user deleted successfully." };
 }
+
+export async function adminActivateBusinessAction(input: { businessId: string }) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Authentication required.");
+
+  const { data: isSuper, error: rpcError } = await supabase.rpc("is_super_admin", { p_user_id: user.id });
+  if (rpcError || !isSuper) throw new Error("Access Denied: Super Owner authorization required.");
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!serviceRoleKey || !supabaseUrl) throw new Error("Server configuration error.");
+
+  const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+  const { error } = await supabaseAdmin
+    .from("subscriptions")
+    .update({
+      status: "active",
+      payment_status: "approved",
+      current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("business_id", input.businessId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/super-admin");
+  return { success: true, message: "Business activated successfully." };
+}
+
+export async function adminDeactivateBusinessAction(input: { businessId: string }) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Authentication required.");
+
+  const { data: isSuper, error: rpcError } = await supabase.rpc("is_super_admin", { p_user_id: user.id });
+  if (rpcError || !isSuper) throw new Error("Access Denied: Super Owner authorization required.");
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!serviceRoleKey || !supabaseUrl) throw new Error("Server configuration error.");
+
+  const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+  const { error } = await supabaseAdmin
+    .from("subscriptions")
+    .update({
+      status: "expired",
+      payment_status: "rejected",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("business_id", input.businessId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/super-admin");
+  return { success: true, message: "Business deactivated successfully." };
+}
+
+export async function adminArchiveBusinessAction(input: { businessId: string; confirmName: string }) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Authentication required.");
+
+  const { data: isSuper, error: rpcError } = await supabase.rpc("is_super_admin", { p_user_id: user.id });
+  if (rpcError || !isSuper) throw new Error("Access Denied: Super Owner authorization required.");
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!serviceRoleKey || !supabaseUrl) throw new Error("Server configuration error.");
+
+  const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+  const { data: biz, error: bizErr } = await supabaseAdmin
+    .from("businesses")
+    .select("name")
+    .eq("id", input.businessId)
+    .single();
+
+  if (bizErr || !biz) throw new Error("Business not found.");
+
+  if (biz.name.trim().toLowerCase() !== input.confirmName.trim().toLowerCase()) {
+    throw new Error("Business name confirmation does not match.");
+  }
+
+  const { error } = await supabaseAdmin
+    .from("subscriptions")
+    .update({
+      status: "cancelled",
+      payment_status: "rejected",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("business_id", input.businessId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/super-admin");
+  return { success: true, message: "Business archived/deleted successfully." };
+}

@@ -30,8 +30,16 @@ import {
   Loader2,
   DollarSign,
   Package,
+  Play,
+  Pause,
 } from "lucide-react";
-import { superAdminLogout } from "./actions";
+import {
+  superAdminLogout,
+  deletePlatformUserAction,
+  adminActivateBusinessAction,
+  adminDeactivateBusinessAction,
+  adminArchiveBusinessAction,
+} from "./actions";
 
 export interface Props {
   adminEmail: string;
@@ -82,6 +90,12 @@ export default function SuperAdminClient({
   const [editAmount, setEditAmount] = useState<number>(99);
   const [editMemberLimit, setEditMemberLimit] = useState<number>(5);
   const [editAdminNote, setEditAdminNote] = useState("");
+
+  // Archive / Delete Business Modal State
+  const [archiveBizModalOpen, setArchiveBizModalOpen] = useState(false);
+  const [bizToArchive, setBizToArchive] = useState<any | null>(null);
+  const [confirmBizNameInput, setConfirmBizNameInput] = useState("");
+  const [archivingBiz, setArchivingBiz] = useState(false);
 
   const plansList = [
     { id: "basic", label: "Basic Plan", amount: 99, defaultLimit: 5, desc: "Essential POS billing & stock management" },
@@ -149,6 +163,70 @@ export default function SuperAdminClient({
       setErrorMsg(err.message || "Failed to update business subscription.");
     } finally {
       setLoadingId(null);
+    }
+  };
+
+  const handleActivateBiz = async (businessId: string) => {
+    setLoadingId(businessId);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await adminActivateBusinessAction({ businessId });
+      if (res && res.success) {
+        setSuccessMsg(res.message);
+        setTimeout(() => setSuccessMsg(""), 4000);
+        await handleRefresh();
+      }
+    } catch (err: any) {
+      console.error("Activation error:", err);
+      setErrorMsg(err.message || "Failed to activate business.");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleDeactivateBiz = async (businessId: string) => {
+    setLoadingId(businessId);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await adminDeactivateBusinessAction({ businessId });
+      if (res && res.success) {
+        setSuccessMsg(res.message);
+        setTimeout(() => setSuccessMsg(""), 4000);
+        await handleRefresh();
+      }
+    } catch (err: any) {
+      console.error("Deactivation error:", err);
+      setErrorMsg(err.message || "Failed to deactivate business.");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleArchiveConfirm = async () => {
+    if (!bizToArchive) return;
+    setArchivingBiz(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await adminArchiveBusinessAction({
+        businessId: bizToArchive.id,
+        confirmName: confirmBizNameInput,
+      });
+      if (res && res.success) {
+        setSuccessMsg(res.message);
+        setArchiveBizModalOpen(false);
+        setBizToArchive(null);
+        setConfirmBizNameInput("");
+        setTimeout(() => setSuccessMsg(""), 4000);
+        await handleRefresh();
+      }
+    } catch (err: any) {
+      console.error("Archive error:", err);
+      setErrorMsg(err.message || "Failed to delete/archive business.");
+      setArchivingBiz(false);
+      setArchiveBizModalOpen(false);
     }
   };
 
@@ -400,9 +478,11 @@ export default function SuperAdminClient({
                     {filteredBusinesses.map((biz) => {
                       const sub = subMap.get(biz.id);
                       const payStatus = sub?.payment_status || "none";
+                      const subStatus = sub?.status || "trial";
                       const isApproved = payStatus === "approved";
                       const isPending = payStatus === "pending";
                       const isRejected = payStatus === "rejected";
+                      const isActiveSub = subStatus === "active" || subStatus === "trial";
 
                       const bizMembers = membersByBiz.get(biz.id) || [];
                       const ownerProfile = profileMap.get(biz.owner_id);
@@ -437,7 +517,7 @@ export default function SuperAdminClient({
                               </span>
                             </td>
                             <td className="p-4 capitalize text-slate-300">
-                              {sub?.status || "trial"}
+                              {subStatus}
                             </td>
                             <td className="p-4">
                               <span className={`px-2.5 py-1 font-black text-[10px] uppercase rounded-full border ${
@@ -456,13 +536,49 @@ export default function SuperAdminClient({
                               {formatDate(sub?.current_period_end)}
                             </td>
                             <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditBiz(biz)}
-                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                              >
-                                <Sliders className="w-3.5 h-3.5" /> Edit / Activate
-                              </button>
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditBiz(biz)}
+                                  className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                  title="Edit Subscription & Limits"
+                                >
+                                  <Sliders className="w-3 h-3" /> Edit
+                                </button>
+                                {isActiveSub ? (
+                                  <button
+                                    type="button"
+                                    disabled={loadingId === biz.id}
+                                    onClick={() => handleDeactivateBiz(biz.id)}
+                                    className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                    title="Deactivate Business"
+                                  >
+                                    <Pause className="w-3 h-3" /> Deactivate
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={loadingId === biz.id}
+                                    onClick={() => handleActivateBiz(biz.id)}
+                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                    title="Activate Business"
+                                  >
+                                    <Play className="w-3 h-3" /> Activate
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBizToArchive(biz);
+                                    setConfirmBizNameInput("");
+                                    setArchiveBizModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                  title="Archive / Delete Business"
+                                >
+                                  <Trash2 className="w-3 h-3" /> Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
 
@@ -703,6 +819,52 @@ export default function SuperAdminClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ARCHIVE / DELETE BUSINESS CONFIRMATION MODAL */}
+      {archiveBizModalOpen && bizToArchive && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-800 space-y-5 text-xs text-slate-100">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-black text-white">Archive / Delete Business</h3>
+              <button onClick={() => setArchiveBizModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer p-1"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="space-y-2 bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+              <p className="text-slate-300 font-semibold">
+                You are about to archive/delete business <strong className="text-white font-bold">{bizToArchive.name}</strong>.
+              </p>
+              <p className="text-[11px] text-amber-400">
+                To confirm permanent archival, please type the exact business name (<strong className="text-white">{bizToArchive.name}</strong>) below:
+              </p>
+              <input
+                type="text"
+                placeholder={`Type "${bizToArchive.name}" to confirm`}
+                value={confirmBizNameInput}
+                onChange={(e) => setConfirmBizNameInput(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-bold text-white outline-none focus:border-rose-500 h-11"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setArchiveBizModalOpen(false)}
+                className="flex-1 py-3 border border-slate-700 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 cursor-pointer min-h-[44px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={archivingBiz || confirmBizNameInput.trim().toLowerCase() !== bizToArchive.name.trim().toLowerCase()}
+                onClick={handleArchiveConfirm}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
+              >
+                {archivingBiz ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm Archive"}
+              </button>
+            </div>
           </div>
         </div>
       )}
