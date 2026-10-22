@@ -25,6 +25,7 @@ import {
   Phone,
   Mail,
   Shield,
+  UserCheck,
 } from "lucide-react";
 import { superAdminLogout } from "./actions";
 
@@ -49,13 +50,14 @@ export default function SuperAdminClient({
   const [members, setMembers] = useState<any[]>(initialMembers || []);
   const [profiles, setProfiles] = useState<any[]>(initialProfiles || []);
 
+  const [activeTab, setActiveTab] = useState<"businesses" | "users">("businesses");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Expandable row state
+  // Expandable row state for businesses
   const [expandedBizId, setExpandedBizId] = useState<string | null>(null);
 
   // Manual Activation Modal State
@@ -86,7 +88,7 @@ export default function SuperAdminClient({
       setMembers(memRes.data || []);
       setProfiles(profRes.data || []);
 
-      setSuccessMsg("Data refreshed!");
+      setSuccessMsg("Data refreshed successfully!");
       setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err: any) {
       console.error("Refresh error:", err);
@@ -118,7 +120,6 @@ export default function SuperAdminClient({
       setConfirmPaymentReceived(false);
       setTimeout(() => setSuccessMsg(""), 5000);
 
-      // Refresh data
       await handleRefresh();
     } catch (err: any) {
       console.error("Manual activation error:", err);
@@ -130,7 +131,7 @@ export default function SuperAdminClient({
 
   // Maps & Aggregations
   const subMap = new Map(subscriptions.map((s) => [s.business_id, s]));
-  const profileMap = new Map(profiles.map((p) => [p.id, p]));
+  const businessMap = new Map(businesses.map((b) => [b.id, b]));
 
   // Distinct global users count
   const globalUniqueUsers = new Set(members.map((m) => m.user_id));
@@ -144,22 +145,42 @@ export default function SuperAdminClient({
     membersByBiz.get(m.business_id)!.push(m);
   }
 
+  // Map user memberships by user_id
+  const bizByUser = new Map<string, any[]>();
+  for (const m of members) {
+    const biz = businessMap.get(m.business_id);
+    if (biz) {
+      if (!bizByUser.has(m.user_id)) {
+        bizByUser.set(m.user_id, []);
+      }
+      bizByUser.get(m.user_id)!.push({ business: biz, role: m.role });
+    }
+  }
+
   const filteredBusinesses = businesses.filter((b) => {
     const sub = subMap.get(b.id);
     const status = sub?.payment_status || "none";
     const matchesStatus = statusFilter === "ALL" || status.toUpperCase() === statusFilter.toUpperCase();
     const query = searchQuery.toLowerCase().trim();
-    const ownerProf = profileMap.get(b.owner_id);
-    const ownerName = ownerProf?.full_name || "";
+    const ownerBizMembers = membersByBiz.get(b.id) || [];
 
     const matchesSearch =
       !query ||
       b.name.toLowerCase().includes(query) ||
       (b.city || "").toLowerCase().includes(query) ||
-      (b.phone || "").toLowerCase().includes(query) ||
-      ownerName.toLowerCase().includes(query);
+      (b.phone || "").toLowerCase().includes(query);
 
     return matchesStatus && matchesSearch;
+  });
+
+  const filteredProfiles = profiles.filter((p) => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
+    return (
+      (p.full_name || "").toLowerCase().includes(query) ||
+      (p.phone || "").toLowerCase().includes(query) ||
+      p.id.toLowerCase().includes(query)
+    );
   });
 
   return (
@@ -226,10 +247,10 @@ export default function SuperAdminClient({
 
           <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
             <div className="flex justify-between items-center text-slate-400">
-              <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Business Users</span>
+              <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Platform Users</span>
               <Users className="w-4 h-4 text-indigo-400" />
             </div>
-            <h3 className="text-2xl font-black text-indigo-400">{globalUniqueUsers.size}</h3>
+            <h3 className="text-2xl font-black text-indigo-400">{profiles.length}</h3>
           </div>
 
           <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
@@ -253,186 +274,291 @@ export default function SuperAdminClient({
           </div>
         </div>
 
+        {/* NAVIGATION TABS */}
+        <div className="flex border-b border-slate-800 gap-4">
+          <button
+            onClick={() => setActiveTab("businesses")}
+            className={`pb-3 font-black text-xs uppercase tracking-wider border-b-2 transition cursor-pointer flex items-center gap-2 ${
+              activeTab === "businesses" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Building className="w-4 h-4" /> Client Businesses ({businesses.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`pb-3 font-black text-xs uppercase tracking-wider border-b-2 transition cursor-pointer flex items-center gap-2 ${
+              activeTab === "users" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <UserCheck className="w-4 h-4" /> Platform Users & Admins ({profiles.length})
+          </button>
+        </div>
+
         {/* SEARCH & FILTERS */}
         <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex flex-col sm:flex-row gap-3 justify-between items-center">
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search business, owner or city..."
+              placeholder={activeTab === "businesses" ? "Search business or city..." : "Search user name or phone..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 h-11"
             />
           </div>
 
-          <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto">
-            {["ALL", "PENDING", "APPROVED", "REJECTED", "NONE"].map((st) => (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`px-3 py-2 rounded-xl font-black text-[11px] uppercase transition cursor-pointer ${
-                  statusFilter === st ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                }`}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* BUSINESSES, ADMINS & SUBSCRIPTIONS TABLE */}
-        <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
-          <div className="p-5 border-b border-slate-800 flex justify-between items-center">
-            <h3 className="text-sm font-black text-white uppercase tracking-wider">Registered Client Businesses & Admins</h3>
-            <span className="text-xs text-slate-400 font-bold">{filteredBusinesses.length} records</span>
-          </div>
-
-          {filteredBusinesses.length === 0 ? (
-            <div className="p-12 text-center text-xs text-slate-400">No client businesses found matching filter.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/60 text-[11px] text-slate-400 uppercase border-b border-slate-800">
-                  <tr>
-                    <th className="p-4 w-8"></th>
-                    <th className="p-4">Business Name & Reg. Date</th>
-                    <th className="p-4">Owner / Admin Identity</th>
-                    <th className="p-4">Total Users & Staff</th>
-                    <th className="p-4">Plan & Amount</th>
-                    <th className="p-4">Payment Status</th>
-                    <th className="p-4">Expiry Date</th>
-                    <th className="p-4 text-center">Actions / Activation</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/80">
-                  {filteredBusinesses.map((biz) => {
-                    const sub = subMap.get(biz.id);
-                    const payStatus = sub?.payment_status || "none";
-                    const isApproved = payStatus === "approved";
-                    const isPending = payStatus === "pending";
-                    const isRejected = payStatus === "rejected";
-
-                    const bizMembers = membersByBiz.get(biz.id) || [];
-                    const ownerMember = bizMembers.find((m) => lowerRole(m.role) === "owner" || m.user_id === biz.owner_id);
-                    const ownerProfile = profileMap.get(biz.owner_id);
-                    const ownerName = ownerProfile?.full_name || ownerMember?.user_id ? `Admin (${biz.owner_id.substring(0, 8)})` : "Owner";
-
-                    const staffCount = Math.max(0, bizMembers.length - 1);
-                    const isExpanded = expandedBizId === biz.id;
-
-                    return (
-                      <React.Fragment key={biz.id}>
-                        <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => setExpandedBizId(isExpanded ? null : biz.id)}>
-                          <td className="p-4 text-slate-500">
-                            {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4" />}
-                          </td>
-                          <td className="p-4 font-black text-white">
-                            {biz.name}
-                            <span className="block text-[10px] text-slate-400 font-normal">
-                              Type: {biz.business_type || "Store"} • Reg: {new Date(biz.created_at).toLocaleDateString()}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <span className="font-extrabold text-slate-200 block flex items-center gap-1">
-                              <Shield className="w-3 h-3 text-amber-400 inline" /> {ownerName}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              Phone: {biz.phone || "N/A"}
-                            </span>
-                          </td>
-                          <td className="p-4">
-                            <span className="font-black text-indigo-400 text-xs">{bizMembers.length} Users</span>
-                            <span className="block text-[10px] text-slate-400">1 Owner + {staffCount} Staff</span>
-                          </td>
-                          <td className="p-4">
-                            <span className="font-extrabold text-indigo-400">₹{sub?.amount || 99}/mo</span>
-                            <span className="block text-[10px] text-slate-400 capitalize">{sub?.plan || "basic"} ({sub?.status || "trial"})</span>
-                          </td>
-                          <td className="p-4">
-                            <span className={`px-2.5 py-1 font-black text-[10px] uppercase rounded-full border ${
-                              isApproved ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
-                              isPending ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
-                              isRejected ? "bg-rose-500/10 text-rose-400 border-rose-500/30" :
-                              "bg-slate-800 text-slate-400 border-slate-700"
-                            }`}>
-                              {payStatus}
-                            </span>
-                          </td>
-                          <td className="p-4 text-slate-300 font-bold">
-                            {sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : "N/A"}
-                          </td>
-                          <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                            {sub ? (
-                              <button
-                                type="button"
-                                disabled={loadingId === sub.id}
-                                onClick={() => setActivateModalSub({ ...sub, business_name: biz.name })}
-                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                                title="Activate / Renew Subscription"
-                              >
-                                <Zap className="w-3.5 h-3.5" /> Activate / Renew
-                              </button>
-                            ) : (
-                              <span className="text-slate-500 text-[11px]">No subscription</span>
-                            )}
-                          </td>
-                        </tr>
-
-                        {/* EXPANDABLE MEMBER DETAILS ROW */}
-                        {isExpanded && (
-                          <tr className="bg-slate-950/80">
-                            <td colSpan={8} className="p-4 pl-12 border-b border-slate-800">
-                              <div className="space-y-3">
-                                <h4 className="font-extrabold text-indigo-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                  <Users className="w-3.5 h-3.5" /> Member Roster for {biz.name} ({bizMembers.length} Members)
-                                </h4>
-
-                                {bizMembers.length === 0 ? (
-                                  <p className="text-slate-500 italic text-[11px]">No member records found.</p>
-                                ) : (
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {bizMembers.map((m) => {
-                                      const prof = profileMap.get(m.user_id);
-                                      const isOwner = lowerRole(m.role) === "owner" || m.user_id === biz.owner_id;
-
-                                      return (
-                                        <div key={m.id} className="p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1">
-                                          <div className="flex justify-between items-center">
-                                            <span className="font-extrabold text-white text-xs flex items-center gap-1">
-                                              <User className="w-3 h-3 text-slate-400" />
-                                              {prof?.full_name || `User (${m.user_id.substring(0, 8)})`}
-                                            </span>
-                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                                              isOwner ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-slate-800 text-indigo-300"
-                                            }`}>
-                                              {m.role || "STAFF"}
-                                            </span>
-                                          </div>
-
-                                          {prof?.phone && (
-                                            <p className="text-[10px] text-slate-400">Phone: {prof.phone}</p>
-                                          )}
-                                          <p className="text-[10px] text-slate-500 font-mono">
-                                            Joined: {m.created_at ? new Date(m.created_at).toLocaleDateString() : "N/A"}
-                                          </p>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {activeTab === "businesses" && (
+            <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto">
+              {["ALL", "PENDING", "APPROVED", "REJECTED", "NONE"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-2 rounded-xl font-black text-[11px] uppercase transition cursor-pointer ${
+                    statusFilter === st ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
             </div>
           )}
         </div>
+
+        {/* TAB 1: BUSINESSES & SUBSCRIPTIONS TABLE */}
+        {activeTab === "businesses" && (
+          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center">
+              <h3 className="text-sm font-black text-white uppercase tracking-wider">Registered Client Businesses & Admins</h3>
+              <span className="text-xs text-slate-400 font-bold">{filteredBusinesses.length} records</span>
+            </div>
+
+            {filteredBusinesses.length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-400">No client businesses found matching filter.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950/60 text-[11px] text-slate-400 uppercase border-b border-slate-800">
+                    <tr>
+                      <th className="p-4 w-8"></th>
+                      <th className="p-4">Business Name & Reg. Date</th>
+                      <th className="p-4">Owner / Admin Identity</th>
+                      <th className="p-4">Total Users & Staff</th>
+                      <th className="p-4">Plan & Amount</th>
+                      <th className="p-4">Payment Status</th>
+                      <th className="p-4">Expiry Date</th>
+                      <th className="p-4 text-center">Actions / Activation</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {filteredBusinesses.map((biz) => {
+                      const sub = subMap.get(biz.id);
+                      const payStatus = sub?.payment_status || "none";
+                      const isApproved = payStatus === "approved";
+                      const isPending = payStatus === "pending";
+                      const isRejected = payStatus === "rejected";
+
+                      const bizMembers = membersByBiz.get(biz.id) || [];
+                      const ownerMember = bizMembers.find((m) => lowerRole(m.role) === "owner" || m.user_id === biz.owner_id);
+                      const ownerProfile = profiles.find((p) => p.id === biz.owner_id);
+                      const ownerName = ownerProfile?.full_name || (ownerMember ? `Admin (${biz.owner_id.substring(0, 8)})` : "Owner");
+
+                      const staffCount = Math.max(0, bizMembers.length - 1);
+                      const isExpanded = expandedBizId === biz.id;
+
+                      return (
+                        <React.Fragment key={biz.id}>
+                          <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => setExpandedBizId(isExpanded ? null : biz.id)}>
+                            <td className="p-4 text-slate-500">
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4" />}
+                            </td>
+                            <td className="p-4 font-black text-white">
+                              {biz.name}
+                              <span className="block text-[10px] text-slate-400 font-normal">
+                                Type: {biz.business_type || "Store"} • Reg: {new Date(biz.created_at).toLocaleDateString()}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="font-extrabold text-slate-200 block flex items-center gap-1">
+                                <Shield className="w-3 h-3 text-amber-400 inline" /> {ownerName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                Phone: {biz.phone || ownerProfile?.phone || "N/A"}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="font-black text-indigo-400 text-xs">{bizMembers.length} Users</span>
+                              <span className="block text-[10px] text-slate-400">1 Owner + {staffCount} Staff</span>
+                            </td>
+                            <td className="p-4">
+                              <span className="font-extrabold text-indigo-400">₹{sub?.amount || 99}/mo</span>
+                              <span className="block text-[10px] text-slate-400 capitalize">{sub?.plan || "basic"} ({sub?.status || "trial"})</span>
+                            </td>
+                            <td className="p-4">
+                              <span className={`px-2.5 py-1 font-black text-[10px] uppercase rounded-full border ${
+                                isApproved ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                                isPending ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
+                                isRejected ? "bg-rose-500/10 text-rose-400 border-rose-500/30" :
+                                "bg-slate-800 text-slate-400 border-slate-700"
+                              }`}>
+                                {payStatus}
+                              </span>
+                            </td>
+                            <td className="p-4 text-slate-300 font-bold">
+                              {sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : "N/A"}
+                            </td>
+                            <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                              {sub ? (
+                                <button
+                                  type="button"
+                                  disabled={loadingId === sub.id}
+                                  onClick={() => setActivateModalSub({ ...sub, business_name: biz.name })}
+                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                                  title="Activate / Renew Subscription"
+                                >
+                                  <Zap className="w-3.5 h-3.5" /> Activate / Renew
+                                </button>
+                              ) : (
+                                <span className="text-slate-500 text-[11px]">No subscription</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* EXPANDABLE MEMBER DETAILS ROW */}
+                          {isExpanded && (
+                            <tr className="bg-slate-950/80">
+                              <td colSpan={8} className="p-4 pl-12 border-b border-slate-800">
+                                <div className="space-y-3">
+                                  <h4 className="font-extrabold text-indigo-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                    <Users className="w-3.5 h-3.5" /> Member Roster for {biz.name} ({bizMembers.length} Members)
+                                  </h4>
+
+                                  {bizMembers.length === 0 ? (
+                                    <p className="text-slate-500 italic text-[11px]">No member records found.</p>
+                                  ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                      {bizMembers.map((m) => {
+                                        const prof = profiles.find((p) => p.id === m.user_id);
+                                        const isOwner = lowerRole(m.role) === "owner" || m.user_id === biz.owner_id;
+
+                                        return (
+                                          <div key={m.id} className="p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1">
+                                            <div className="flex justify-between items-center">
+                                              <span className="font-extrabold text-white text-xs flex items-center gap-1">
+                                                <User className="w-3 h-3 text-slate-400" />
+                                                {prof?.full_name || `User (${m.user_id.substring(0, 8)})`}
+                                              </span>
+                                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                                isOwner ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-slate-800 text-indigo-300"
+                                              }`}>
+                                                {m.role || "STAFF"}
+                                              </span>
+                                            </div>
+
+                                            {prof?.phone && (
+                                              <p className="text-[10px] text-slate-400">Phone: {prof.phone}</p>
+                                            )}
+                                            <p className="text-[10px] text-slate-500 font-mono">
+                                              Joined: {m.created_at ? new Date(m.created_at).toLocaleDateString() : "N/A"}
+                                            </p>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: PLATFORM USERS & ADMINS DIRECTORY */}
+        {activeTab === "users" && (
+          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center">
+              <h3 className="text-sm font-black text-white uppercase tracking-wider">All Registered Platform Users & Admins</h3>
+              <span className="text-xs text-slate-400 font-bold">{filteredProfiles.length} records</span>
+            </div>
+
+            {filteredProfiles.length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-400">No registered profiles found matching filter.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950/60 text-[11px] text-slate-400 uppercase border-b border-slate-800">
+                    <tr>
+                      <th className="p-4">User Name / Profile</th>
+                      <th className="p-4">Mobile Phone</th>
+                      <th className="p-4">Account Status & Associations</th>
+                      <th className="p-4">Associated Businesses & Roles</th>
+                      <th className="p-4">Registration Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {filteredProfiles.map((prof) => {
+                      const userBizList = bizByUser.get(prof.id) || [];
+                      const isOwnerAnywhere = businesses.some((b) => b.owner_id === prof.id);
+                      const isMemberAnywhere = userBizList.length > 0;
+
+                      return (
+                        <tr key={prof.id} className="hover:bg-slate-800/50">
+                          <td className="p-4 font-black text-white">
+                            {prof.full_name || "Unnamed User"}
+                            <span className="block text-[10px] text-slate-500 font-mono">ID: {prof.id}</span>
+                          </td>
+                          <td className="p-4 font-mono font-bold text-amber-400">
+                            {prof.phone || <span className="text-slate-500 italic">Not provided</span>}
+                          </td>
+                          <td className="p-4">
+                            {isOwnerAnywhere ? (
+                              <span className="px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/30 font-black text-[10px] uppercase rounded-full">
+                                Business Owner
+                              </span>
+                            ) : isMemberAnywhere ? (
+                              <span className="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 font-black text-[10px] uppercase rounded-full">
+                                Business Staff / Member
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 bg-slate-800 text-slate-400 border border-slate-700 font-black text-[10px] uppercase rounded-full">
+                                Registered (No Business yet)
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            {userBizList.length === 0 ? (
+                              <span className="text-slate-500 italic">None (Unassigned)</span>
+                            ) : (
+                              <div className="space-y-1">
+                                {userBizList.map((item, idx) => (
+                                  <div key={idx} className="flex items-center gap-2">
+                                    <span className="font-extrabold text-white">{item.business.name}</span>
+                                    <span className="px-2 py-0.5 bg-slate-800 text-indigo-300 rounded text-[9px] font-black uppercase">
+                                      {item.role}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-4 text-slate-300 font-bold">
+                            {prof.created_at ? new Date(prof.created_at).toLocaleDateString() : "N/A"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* MANUAL SUBSCRIPTION ACTIVATION MODAL */}
