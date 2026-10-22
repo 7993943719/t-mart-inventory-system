@@ -52,6 +52,7 @@ export default function PurchasesPage() {
         .from("purchase_bills")
         .select("*")
         .eq("business_id", bizId)
+        .neq("status", "deleted")
         .order("created_at", { ascending: false });
 
       if (billsErr) throw billsErr;
@@ -59,6 +60,7 @@ export default function PurchasesPage() {
 
       const targetName = (vendor.name || "").trim().toLowerCase();
       const bills = allBills.filter((b: any) => {
+        if (b.status === "deleted") return false;
         const sName = (b.supplier_name || "").trim().toLowerCase();
         return sName === targetName || (!sName && targetName === "general supplier") || (sName === "general supplier" && targetName === "general supplier");
       });
