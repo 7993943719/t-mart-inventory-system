@@ -166,6 +166,7 @@ export default function StockPage() {
 
   const [selectProductModalOpen, setSelectProductModalOpen] = useState(false);
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState("");
   const [linkingItemIndex, setLinkingItemIndex] = useState<number | null>(null);
   const [confirmPurchaseModalOpen, setConfirmPurchaseModalOpen] = useState(false);
 
@@ -357,6 +358,7 @@ export default function StockPage() {
         ];
       }
     });
+    setCatalogSearchQuery("");
     setCatalogModalOpen(false);
   };
 
@@ -1730,28 +1732,69 @@ export default function StockPage() {
               <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-600" /> Add Product from Catalog
               </h3>
-              <button onClick={() => setCatalogModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X className="w-5 h-5" /></button>
+              <button onClick={() => { setCatalogSearchQuery(""); setCatalogModalOpen(false); }} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
             <p className="text-xs text-slate-500 font-medium">Select a product to add to this purchase bill:</p>
+
+            {/* SEARCH INPUT */}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search product by name or barcode..."
+                value={catalogSearchQuery}
+                onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-blue-600 h-10"
+              />
+              {catalogSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setCatalogSearchQuery("")}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  title="Reset search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
             <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-              {products.map((prod) => (
-                <div key={prod.id} className="p-2.5 bg-slate-50 hover:bg-blue-50/50 rounded-xl border flex justify-between items-center text-xs">
-                  <div className="min-w-0 flex-1 pr-2">
-                    <p className="font-extrabold text-slate-900 truncate">{prod.name}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">Barcode: {prod.barcode || "N/A"} • Stock: {prod.stock_quantity} {prod.unit || "pcs"}</p>
+              {(() => {
+                const filteredCatalog = products.filter((prod) => {
+                  if (!catalogSearchQuery.trim()) return true;
+                  const query = catalogSearchQuery.toLowerCase().trim();
+                  const nameMatch = (prod.name || "").toLowerCase().includes(query);
+                  const barcodeMatch = (prod.barcode || "").toLowerCase().includes(query);
+                  return nameMatch || barcodeMatch;
+                });
+
+                if (filteredCatalog.length === 0) {
+                  return (
+                    <div className="p-8 text-center text-slate-400 font-semibold bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      No products found
+                    </div>
+                  );
+                }
+
+                return filteredCatalog.map((prod) => (
+                  <div key={prod.id} className="p-2.5 bg-slate-50 hover:bg-blue-50/50 rounded-xl border flex justify-between items-center text-xs">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <p className="font-extrabold text-slate-900 truncate">{prod.name}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">Barcode: {prod.barcode || "N/A"} • Stock: {prod.stock_quantity} {prod.unit || "pcs"}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-black text-emerald-600">₹{Number(prod.purchase_price || 0).toFixed(2)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleAddCatalogProduct(prod)}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-xs cursor-pointer min-h-[32px]"
+                      >
+                        + Add
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="font-black text-emerald-600">₹{Number(prod.purchase_price || 0).toFixed(2)}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleAddCatalogProduct(prod)}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-xs cursor-pointer"
-                    >
-                      + Add
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           </div>
         </div>
