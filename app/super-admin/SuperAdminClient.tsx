@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, startTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ShieldCheck,
@@ -92,12 +92,6 @@ export default function SuperAdminClient({
   const [editAmount, setEditAmount] = useState<number>(99);
   const [editMemberLimit, setEditMemberLimit] = useState<number>(5);
   const [editAdminNote, setEditAdminNote] = useState("");
-
-  // Archive / Soft Delete Business Modal State
-  const [archiveBizModalOpen, setArchiveBizModalOpen] = useState(false);
-  const [bizToArchive, setBizToArchive] = useState<any | null>(null);
-  const [confirmBizNameInput, setConfirmBizNameInput] = useState("");
-  const [archivingBiz, setArchivingBiz] = useState(false);
 
   // Permanent Delete Business Modal State
   const [permDeleteModalOpen, setPermDeleteModalOpen] = useState(false);
@@ -209,32 +203,6 @@ export default function SuperAdminClient({
       setErrorMsg(err.message || "Failed to deactivate business.");
     } finally {
       setLoadingId(null);
-    }
-  };
-
-  const handleArchiveConfirm = async () => {
-    if (!bizToArchive) return;
-    setArchivingBiz(true);
-    setErrorMsg("");
-    setSuccessMsg("");
-    try {
-      const res = await adminArchiveBusinessAction({
-        businessId: bizToArchive.id,
-        confirmName: confirmBizNameInput,
-      });
-      if (res && res.success) {
-        setSuccessMsg(res.message);
-        setArchiveBizModalOpen(false);
-        setBizToArchive(null);
-        setConfirmBizNameInput("");
-        setTimeout(() => setSuccessMsg(""), 4000);
-        await handleRefresh();
-      }
-    } catch (err: any) {
-      console.error("Archive error:", err);
-      setErrorMsg(err.message || "Failed to archive business.");
-      setArchivingBiz(false);
-      setArchiveBizModalOpen(false);
     }
   };
 
@@ -362,7 +330,7 @@ export default function SuperAdminClient({
           </div>
 
           <button
-            onClick={handleRefresh}
+            onClick={() => startTransition(() => handleRefresh())}
             className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -477,7 +445,7 @@ export default function SuperAdminClient({
               {["ALL", "PENDING", "APPROVED", "REJECTED", "NONE"].map((st) => (
                 <button
                   key={st}
-                  onClick={() => setStatusFilter(st)}
+                  onClick={() => startTransition(() => setStatusFilter(st))}
                   className={`px-3 py-2 rounded-xl font-black text-[11px] uppercase transition cursor-pointer ${
                     statusFilter === st ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
@@ -528,7 +496,7 @@ export default function SuperAdminClient({
 
                       return (
                         <React.Fragment key={biz.id}>
-                          <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => setExpandedBizId(isExpanded ? null : biz.id)}>
+                          <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => startTransition(() => setExpandedBizId(isExpanded ? null : biz.id))}>
                             <td className="p-4 text-slate-500">
                               {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4" />}
                             </td>
@@ -573,7 +541,7 @@ export default function SuperAdminClient({
                               <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenEditBiz(biz)}
+                                  onClick={() => startTransition(() => handleOpenEditBiz(biz))}
                                   className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                   title="Edit Subscription & Limits"
                                 >
@@ -583,7 +551,7 @@ export default function SuperAdminClient({
                                   <button
                                     type="button"
                                     disabled={loadingId === biz.id}
-                                    onClick={() => handleDeactivateBiz(biz.id)}
+                                    onClick={() => startTransition(() => handleDeactivateBiz(biz.id))}
                                     className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                     title="Deactivate Business"
                                   >
@@ -593,7 +561,7 @@ export default function SuperAdminClient({
                                   <button
                                     type="button"
                                     disabled={loadingId === biz.id}
-                                    onClick={() => handleActivateBiz(biz.id)}
+                                    onClick={() => startTransition(() => handleActivateBiz(biz.id))}
                                     className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                     title="Activate Business"
                                   >
@@ -602,11 +570,11 @@ export default function SuperAdminClient({
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => {
+                                  onClick={() => startTransition(() => {
                                     setBizToPermDelete(biz);
                                     setConfirmPermNameInput("");
                                     setPermDeleteModalOpen(true);
-                                  }}
+                                  })}
                                   className="px-2.5 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white font-black rounded-xl text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
                                   title="Permanently Delete Business"
                                 >
@@ -713,7 +681,7 @@ export default function SuperAdminClient({
                               <button
                                 type="button"
                                 disabled={loadingId === sub.id}
-                                onClick={() => handleReviewPayment(sub.id, "approve")}
+                                onClick={() => startTransition(() => handleReviewPayment(sub.id, "approve"))}
                                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer shadow-sm"
                               >
                                 Approve
@@ -721,7 +689,7 @@ export default function SuperAdminClient({
                               <button
                                 type="button"
                                 disabled={loadingId === sub.id}
-                                onClick={() => handleReviewPayment(sub.id, "reject")}
+                                onClick={() => startTransition(() => handleReviewPayment(sub.id, "reject"))}
                                 className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer shadow-sm"
                               >
                                 Reject
@@ -781,11 +749,11 @@ export default function SuperAdminClient({
                     return (
                       <div
                         key={p.id}
-                        onClick={() => {
+                        onClick={() => startTransition(() => {
                           setEditPlanId(p.id as any);
                           setEditAmount(p.amount);
                           setEditMemberLimit(p.defaultLimit);
-                        }}
+                        })}
                         className={`p-3 rounded-2xl border cursor-pointer text-center transition ${
                           isSelected ? "bg-indigo-600/20 border-indigo-500 text-white font-bold" : "bg-slate-800/50 border-slate-700 text-slate-400"
                         }`}
@@ -895,7 +863,7 @@ export default function SuperAdminClient({
               <button
                 type="button"
                 disabled={permDeleting || confirmPermNameInput.trim().toLowerCase() !== bizToPermDelete.name.trim().toLowerCase()}
-                onClick={handlePermDeleteConfirm}
+                onClick={() => startTransition(() => handlePermDeleteConfirm())}
                 className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-black shadow-md cursor-pointer min-h-[44px] flex items-center justify-center gap-1.5"
               >
                 {permDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Permanently Delete"}
