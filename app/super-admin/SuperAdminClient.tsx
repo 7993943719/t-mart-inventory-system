@@ -33,13 +33,14 @@ import {
 } from "lucide-react";
 import { superAdminLogout } from "./actions";
 
-interface Props {
+export interface Props {
   adminEmail: string;
   initialBusinesses: any[];
   initialSubscriptions: any[];
   initialMembers?: any[];
   initialProfiles?: any[];
   initialSuperAdmins?: any[];
+  initialUsers?: any[];
 }
 
 export default function SuperAdminClient({
@@ -49,6 +50,7 @@ export default function SuperAdminClient({
   initialMembers = [],
   initialProfiles = [],
   initialSuperAdmins = [],
+  initialUsers = [],
 }: Props) {
   const [supabase] = useState(() => createClient());
   const [businesses, setBusinesses] = useState<any[]>(initialBusinesses || []);
@@ -56,13 +58,13 @@ export default function SuperAdminClient({
   const [members, setMembers] = useState<any[]>(initialMembers || []);
   const [profiles, setProfiles] = useState<any[]>(initialProfiles || []);
   const [superAdmins, setSuperAdmins] = useState<any[]>(initialSuperAdmins || []);
+  const [users, setUsers] = useState<any[]>(initialUsers || []);
 
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const [activeSection, setActiveSection] = useState<"businesses" | "plans" | "payments" | "admins">("businesses");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -78,11 +80,9 @@ export default function SuperAdminClient({
   const [editPlanId, setEditPlanId] = useState<"basic" | "pro" | "plus">("basic");
   const [editAmount, setEditAmount] = useState<number>(99);
   const [editMemberLimit, setEditMemberLimit] = useState<number>(5);
-  const [editDurationDays, setEditDurationDays] = useState<number>(30);
   const [editAdminNote, setEditAdminNote] = useState("");
-  const [editEnabledFeatures, setEditEnabledFeatures] = useState<string[]>(["inventory", "billing", "reports", "staff"]);
 
-  // Super Admin Management Modal / State
+  // Super Admin Management State
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [addingAdmin, setAddingAdmin] = useState(false);
 
@@ -102,9 +102,7 @@ export default function SuperAdminClient({
     setEditPlanId((sub?.plan as any) || "basic");
     setEditAmount(Number(sub?.amount || 99));
     setEditMemberLimit(Number(sub?.member_limit || 5));
-    setEditDurationDays(30);
     setEditAdminNote("");
-    setEditEnabledFeatures(Array.isArray(sub?.enabled_features) ? sub.enabled_features : ["inventory", "billing", "reports", "staff"]);
     setEditBizModalOpen(true);
   };
 
@@ -133,13 +131,11 @@ export default function SuperAdminClient({
       if (error) throw error;
       if (data && data.success === false) throw new Error(data.error || "Update failed");
 
-      // Also update custom member limit and features
       const { error: updateErr } = await supabase
         .from("subscriptions")
         .update({
           amount: editAmount,
           member_limit: editMemberLimit,
-          enabled_features: editEnabledFeatures,
         })
         .eq("id", subId);
 
@@ -185,47 +181,6 @@ export default function SuperAdminClient({
     }
   };
 
-  const handleAddSuperAdmin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAdminEmail.trim() || addingAdmin) return;
-    setAddingAdmin(true);
-    setErrorMsg("");
-    setSuccessMsg("");
-
-    try {
-      // Find user id by email from profiles or auth
-      const { data: profData } = await supabase
-        .from("profiles")
-        .select("id")
-        .ilike("full_name", `%${newAdminEmail.trim()}%`)
-        .maybeSingle();
-
-      // Alternatively insert into super_admins table if user exists
-      const targetEmail = newAdminEmail.trim().toLowerCase();
-      // We can use RPC or insert into super_admins if allowed by RLS
-      const { data: userData, error: userErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .limit(1);
-
-      // Call super_admins insert
-      const { error: insErr } = await supabase.from("super_admins").insert([
-        { user_id: profData?.id || null } // or email lookup
-      ]);
-
-      if (insErr) throw insErr;
-
-      setSuccessMsg("Super admin added successfully.");
-      setNewAdminEmail("");
-      await handleRefresh();
-    } catch (err: any) {
-      console.error("Failed to add super admin:", err);
-      setErrorMsg(err.message || "Failed to add super admin.");
-    } finally {
-      setAddingAdmin(false);
-    }
-  };
-
   // Maps & Aggregations
   const subMap = new Map(subscriptions.map((s) => [s.business_id, s]));
   const businessMap = new Map(businesses.map((b) => [b.id, b]));
@@ -259,6 +214,11 @@ export default function SuperAdminClient({
   });
 
   const pendingPaymentsList = subscriptions.filter((s) => s.payment_status === "pending");
+  const activeBusinessesCount = businesses.filter((b) => {
+    const sub = subMap.get(b.id);
+    return sub?.status === "active" || sub?.status === "trial";
+  }).length;
+  const pendingOrInactiveCount = businesses.length - activeBusinessesCount;
   const activeSubsCount = subscriptions.filter((s) => s.status === "active").length;
 
   if (!isMounted) {
@@ -303,8 +263,8 @@ export default function SuperAdminClient({
         </div>
       </header>
 
-      {/* MAIN CONTENT AREA */}
-      <main className="max-w-7xl mx-auto p-4 sm:p-8 space-y-6">
+      {/* MAIN CONTENT AREA — ONE PAGE VERTICAL SCROLL LAYOUT */}
+      <main className="max-w-7xl mx-auto p-4 sm:p-8 space-y-10">
         {successMsg && (
           <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-2xl text-xs font-bold">
             {successMsg}
@@ -317,7 +277,7 @@ export default function SuperAdminClient({
           </div>
         )}
 
-        {/* METRICS OVERVIEW (4 SUMMARY CARDS) */}
+        {/* 1. SUMMARY CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
             <div className="flex justify-between items-center text-slate-400">
@@ -329,10 +289,26 @@ export default function SuperAdminClient({
 
           <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
             <div className="flex justify-between items-center text-slate-400">
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Active Businesses</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            </div>
+            <h3 className="text-2xl font-black text-emerald-400">{activeBusinessesCount}</h3>
+          </div>
+
+          <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
+            <div className="flex justify-between items-center text-slate-400">
+              <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Pending / Inactive</span>
+              <Clock className="w-4 h-4 text-amber-400" />
+            </div>
+            <h3 className="text-2xl font-black text-amber-400">{pendingOrInactiveCount}</h3>
+          </div>
+
+          <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
+            <div className="flex justify-between items-center text-slate-400">
               <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Platform Users</span>
               <Users className="w-4 h-4 text-indigo-400" />
             </div>
-            <h3 className="text-2xl font-black text-indigo-400">{profiles.length}</h3>
+            <h3 className="text-2xl font-black text-indigo-400">{users.length}</h3>
           </div>
 
           <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
@@ -350,214 +326,188 @@ export default function SuperAdminClient({
             </div>
             <h3 className="text-2xl font-black text-amber-400">{pendingPaymentsList.length}</h3>
           </div>
-        </div>
 
-        {/* NAVIGATION TABS / SECTIONS */}
-        <div className="flex border-b border-slate-800 gap-4 overflow-x-auto">
-          <button
-            onClick={() => setActiveSection("businesses")}
-            className={`pb-3 font-black text-xs uppercase tracking-wider border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-              activeSection === "businesses" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Building className="w-4 h-4" /> Client Businesses ({businesses.length})
-          </button>
-          <button
-            onClick={() => setActiveSection("plans")}
-            className={`pb-3 font-black text-xs uppercase tracking-wider border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-              activeSection === "plans" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Package className="w-4 h-4" /> Subscription Plans
-          </button>
-          <button
-            onClick={() => setActiveSection("payments")}
-            className={`pb-3 font-black text-xs uppercase tracking-wider border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-              activeSection === "payments" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <CreditCard className="w-4 h-4" /> Payments & Approvals ({pendingPaymentsList.length})
-          </button>
-          <button
-            onClick={() => setActiveSection("admins")}
-            className={`pb-3 font-black text-xs uppercase tracking-wider border-b-2 transition cursor-pointer flex items-center gap-2 shrink-0 ${
-              activeSection === "admins" ? "border-indigo-500 text-white" : "border-transparent text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Shield className="w-4 h-4" /> Super Admins ({superAdmins.length})
-          </button>
+          <div className="bg-slate-900 p-5 rounded-3xl border border-slate-800 space-y-1">
+            <div className="flex justify-between items-center text-slate-400">
+              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Total Super Admins</span>
+              <Shield className="w-4 h-4 text-purple-400" />
+            </div>
+            <h3 className="text-2xl font-black text-purple-400">{superAdmins.length}</h3>
+          </div>
         </div>
 
         {/* SECTION A: CLIENT BUSINESSES */}
-        {activeSection === "businesses" && (
-          <div className="space-y-4">
-            {/* SEARCH & STATUS FILTERS */}
-            <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex flex-col sm:flex-row gap-3 justify-between items-center">
-              <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search business name, owner or city..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 h-11"
-                />
-              </div>
+        <section className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+              <Building className="w-5 h-5 text-indigo-400" /> Client Businesses ({businesses.length})
+            </h2>
+          </div>
 
-              <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto">
-                {["ALL", "PENDING", "APPROVED", "REJECTED", "NONE"].map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setStatusFilter(st)}
-                    className={`px-3 py-2 rounded-xl font-black text-[11px] uppercase transition cursor-pointer ${
-                      statusFilter === st ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                    }`}
-                  >
-                    {st}
-                  </button>
-                ))}
-              </div>
+          {/* SEARCH & FILTERS */}
+          <div className="bg-slate-900 p-4 rounded-3xl border border-slate-800 flex flex-col sm:flex-row gap-3 justify-between items-center">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search business name, owner or city..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 outline-none focus:border-indigo-500 h-11"
+              />
             </div>
 
-            <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
-              <div className="p-5 border-b border-slate-800 flex justify-between items-center">
-                <h3 className="text-sm font-black text-white uppercase tracking-wider">Registered Client Businesses & Subscriptions</h3>
-                <span className="text-xs text-slate-400 font-bold">{filteredBusinesses.length} records</span>
-              </div>
-
-              {filteredBusinesses.length === 0 ? (
-                <div className="p-12 text-center text-xs text-slate-400">No client businesses found matching filter.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="bg-slate-950/60 text-[11px] text-slate-400 uppercase border-b border-slate-800">
-                      <tr>
-                        <th className="p-4 w-8"></th>
-                        <th className="p-4">Business Name</th>
-                        <th className="p-4">Owner / Admin Email</th>
-                        <th className="p-4">Plan & Amount</th>
-                        <th className="p-4">Members (Current / Limit)</th>
-                        <th className="p-4">Sub Status</th>
-                        <th className="p-4">Payment Status</th>
-                        <th className="p-4">Start Date</th>
-                        <th className="p-4">Expiry Date</th>
-                        <th className="p-4 text-center">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/80">
-                      {filteredBusinesses.map((biz) => {
-                        const sub = subMap.get(biz.id);
-                        const payStatus = sub?.payment_status || "none";
-                        const isApproved = payStatus === "approved";
-                        const isPending = payStatus === "pending";
-                        const isRejected = payStatus === "rejected";
-
-                        const bizMembers = membersByBiz.get(biz.id) || [];
-                        const ownerProfile = profiles.find((p) => p.id === biz.owner_id);
-                        const ownerEmail = ownerProfile?.email || ownerProfile?.full_name || biz.phone || "Owner";
-
-                        const memberLimit = Number(sub?.member_limit || 5);
-                        const currentCount = bizMembers.length;
-                        const isExpanded = expandedBizId === biz.id;
-
-                        return (
-                          <React.Fragment key={biz.id}>
-                            <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => setExpandedBizId(isExpanded ? null : biz.id)}>
-                              <td className="p-4 text-slate-500">
-                                {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4" />}
-                              </td>
-                              <td className="p-4 font-black text-white">
-                                {biz.name}
-                                <span className="block text-[10px] text-slate-400 font-normal">
-                                  {biz.city || biz.business_type || "Store"} • Reg: {formatDate(biz.created_at)}
-                                </span>
-                              </td>
-                              <td className="p-4 font-mono text-slate-200">
-                                {ownerEmail}
-                              </td>
-                              <td className="p-4 font-extrabold text-indigo-400">
-                                {sub?.plan || "basic"} (₹{sub?.amount || 99}/mo)
-                              </td>
-                              <td className="p-4">
-                                <span className={`font-black text-xs ${currentCount > memberLimit ? "text-rose-400" : "text-emerald-400"}`}>
-                                  {currentCount} / {memberLimit}
-                                </span>
-                              </td>
-                              <td className="p-4 capitalize text-slate-300">
-                                {sub?.status || "trial"}
-                              </td>
-                              <td className="p-4">
-                                <span className={`px-2.5 py-1 font-black text-[10px] uppercase rounded-full border ${
-                                  isApproved ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
-                                  isPending ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
-                                  isRejected ? "bg-rose-500/10 text-rose-400 border-rose-500/30" :
-                                  "bg-slate-800 text-slate-400 border-slate-700"
-                                }`}>
-                                  {payStatus}
-                                </span>
-                              </td>
-                              <td className="p-4 text-slate-400 font-mono">
-                                {formatDate(sub?.current_period_start || sub?.created_at)}
-                              </td>
-                              <td className="p-4 text-slate-300 font-bold font-mono">
-                                {formatDate(sub?.current_period_end)}
-                              </td>
-                              <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditBiz(biz)}
-                                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
-                                >
-                                  <Sliders className="w-3.5 h-3.5" /> Edit / Activate
-                                </button>
-                              </td>
-                            </tr>
-
-                            {/* EXPANDABLE MEMBER ROSTER */}
-                            {isExpanded && (
-                              <tr className="bg-slate-950/80">
-                                <td colSpan={10} className="p-4 pl-12 border-b border-slate-800">
-                                  <div className="space-y-3">
-                                    <h4 className="font-extrabold text-indigo-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                      <Users className="w-3.5 h-3.5" /> Member Roster for {biz.name} ({currentCount} / {memberLimit} Allowed)
-                                    </h4>
-                                    {bizMembers.length === 0 ? (
-                                      <p className="text-slate-500 italic text-[11px]">No member records found.</p>
-                                    ) : (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                        {bizMembers.map((m) => {
-                                          const prof = profileMap.get(m.user_id);
-                                          return (
-                                            <div key={m.id} className="p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1">
-                                              <div className="flex justify-between items-center">
-                                                <span className="font-extrabold text-white text-xs">{prof?.full_name || `User (${m.user_id.substring(0, 8)})`}</span>
-                                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-800 text-indigo-300">{m.role || "STAFF"}</span>
-                                              </div>
-                                              <p className="text-[10px] text-slate-400 font-mono">Joined: {formatDate(m.created_at)}</p>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className="flex gap-1.5 overflow-x-auto w-full sm:w-auto">
+              {["ALL", "PENDING", "APPROVED", "REJECTED", "NONE"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-2 rounded-xl font-black text-[11px] uppercase transition cursor-pointer ${
+                    statusFilter === st ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
             </div>
           </div>
-        )}
+
+          <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+            {filteredBusinesses.length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-400">No client businesses found matching filter.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950/60 text-[11px] text-slate-400 uppercase border-b border-slate-800">
+                    <tr>
+                      <th className="p-4 w-8"></th>
+                      <th className="p-4">Business Name</th>
+                      <th className="p-4">Owner Email</th>
+                      <th className="p-4">Plan & Amount</th>
+                      <th className="p-4">Members (Current / Limit)</th>
+                      <th className="p-4">Sub Status</th>
+                      <th className="p-4">Payment Status</th>
+                      <th className="p-4">Start Date</th>
+                      <th className="p-4">Expiry Date</th>
+                      <th className="p-4 text-center">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {filteredBusinesses.map((biz) => {
+                      const sub = subMap.get(biz.id);
+                      const payStatus = sub?.payment_status || "none";
+                      const isApproved = payStatus === "approved";
+                      const isPending = payStatus === "pending";
+                      const isRejected = payStatus === "rejected";
+
+                      const bizMembers = membersByBiz.get(biz.id) || [];
+                      const ownerProfile = profiles.find((p) => p.id === biz.owner_id);
+                      const ownerEmail = ownerProfile?.full_name || biz.phone || "Owner";
+
+                      const memberLimit = Number(sub?.member_limit || 5);
+                      const currentCount = bizMembers.length;
+                      const isExpanded = expandedBizId === biz.id;
+
+                      return (
+                        <React.Fragment key={biz.id}>
+                          <tr className="hover:bg-slate-800/50 cursor-pointer" onClick={() => setExpandedBizId(isExpanded ? null : biz.id)}>
+                            <td className="p-4 text-slate-500">
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-400" /> : <ChevronRight className="w-4 h-4" />}
+                            </td>
+                            <td className="p-4 font-black text-white">
+                              {biz.name}
+                              <span className="block text-[10px] text-slate-400 font-normal">
+                                {biz.city || biz.business_type || "Store"}
+                              </span>
+                            </td>
+                            <td className="p-4 font-mono text-slate-200">
+                              {ownerEmail}
+                            </td>
+                            <td className="p-4">
+                              <span className="font-extrabold text-indigo-400">{sub?.plan || "basic"}</span>
+                              <span className="block text-[10px] text-slate-400 font-bold">₹{sub?.amount || 99}/mo</span>
+                            </td>
+                            <td className="p-4">
+                              <span className={`font-black text-xs ${currentCount > memberLimit ? "text-rose-400" : "text-emerald-400"}`}>
+                                {currentCount} / {memberLimit}
+                              </span>
+                            </td>
+                            <td className="p-4 capitalize text-slate-300">
+                              {sub?.status || "trial"}
+                            </td>
+                            <td className="p-4">
+                              <span className={`px-2.5 py-1 font-black text-[10px] uppercase rounded-full border ${
+                                isApproved ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                                isPending ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
+                                isRejected ? "bg-rose-500/10 text-rose-400 border-rose-500/30" :
+                                "bg-slate-800 text-slate-400 border-slate-700"
+                              }`}>
+                                {payStatus}
+                              </span>
+                            </td>
+                            <td className="p-4 text-slate-400 font-mono">
+                              {formatDate(sub?.current_period_start || sub?.created_at)}
+                            </td>
+                            <td className="p-4 text-slate-300 font-bold font-mono">
+                              {formatDate(sub?.current_period_end)}
+                            </td>
+                            <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditBiz(biz)}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-sm"
+                              >
+                                <Sliders className="w-3.5 h-3.5" /> Edit / Activate
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* EXPANDABLE MEMBER ROSTER */}
+                          {isExpanded && (
+                            <tr className="bg-slate-950/80">
+                              <td colSpan={10} className="p-4 pl-12 border-b border-slate-800">
+                                <div className="space-y-3">
+                                  <h4 className="font-extrabold text-indigo-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                    <Users className="w-3.5 h-3.5" /> Member Roster for {biz.name} ({currentCount} / {memberLimit} Allowed)
+                                  </h4>
+                                  {bizMembers.length === 0 ? (
+                                    <p className="text-slate-500 italic text-[11px]">No member records found.</p>
+                                  ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                      {bizMembers.map((m) => {
+                                        const prof = profileMap.get(m.user_id);
+                                        return (
+                                          <div key={m.id} className="p-3 bg-slate-900 rounded-2xl border border-slate-800 space-y-1">
+                                            <div className="flex justify-between items-center">
+                                              <span className="font-extrabold text-white text-xs">{prof?.full_name || `User (${m.user_id.substring(0, 8)})`}</span>
+                                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-800 text-indigo-300">{m.role || "STAFF"}</span>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 font-mono">Joined: {formatDate(m.created_at)}</p>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* SECTION B: SUBSCRIPTION PLANS */}
-        {activeSection === "plans" && (
+        <section className="space-y-4">
+          <h2 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+            <Package className="w-5 h-5 text-indigo-400" /> Subscription Plans Configuration
+          </h2>
           <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 space-y-5 shadow-xl">
-            <h3 className="text-sm font-black text-white uppercase tracking-wider">Subscription Plans Configuration</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {plansList.map((p) => (
                 <div key={p.id} className="p-5 bg-slate-950/60 rounded-2xl border border-slate-800 space-y-3">
@@ -571,16 +521,14 @@ export default function SuperAdminClient({
               ))}
             </div>
           </div>
-        )}
+        </section>
 
         {/* SECTION C: PAYMENTS AND APPROVALS */}
-        {activeSection === "payments" && (
+        <section className="space-y-4">
+          <h2 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-amber-400" /> Payments & Approvals ({pendingPaymentsList.length})
+          </h2>
           <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
-            <div className="p-5 border-b border-slate-800 flex justify-between items-center">
-              <h3 className="text-sm font-black text-white uppercase tracking-wider">Submitted Payments & Verification Approvals</h3>
-              <span className="text-xs text-amber-400 font-bold">{pendingPaymentsList.length} pending</span>
-            </div>
-
             {pendingPaymentsList.length === 0 ? (
               <div className="p-12 text-center text-xs text-slate-400">No pending subscription payments requiring verification.</div>
             ) : (
@@ -634,29 +582,28 @@ export default function SuperAdminClient({
               </div>
             )}
           </div>
-        )}
+        </section>
 
         {/* SECTION D: SUPER ADMINS */}
-        {activeSection === "admins" && (
-          <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 space-y-5 shadow-xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="text-sm font-black text-white uppercase tracking-wider">Platform Super Admins</h3>
-                <p className="text-[11px] text-slate-400">Manage authorized platform super owner accounts.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="p-4 bg-slate-950/60 rounded-2xl border border-slate-800 flex justify-between items-center">
-                <div>
-                  <p className="font-extrabold text-white text-xs">{adminEmail}</p>
-                  <p className="text-[10px] text-emerald-400 uppercase font-bold">Primary Super Owner (Authorized)</p>
+        <section className="space-y-4">
+          <h2 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+            <Shield className="w-5 h-5 text-purple-400" /> Super Admins ({superAdmins.length})
+          </h2>
+          <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 space-y-4 shadow-xl">
+            <p className="text-xs text-slate-400">Platform-wide administrators authorized with Super Owner privileges.</p>
+            <div className="space-y-2">
+              {superAdmins.map((adm) => (
+                <div key={adm.id} className="p-4 bg-slate-950/60 rounded-2xl border border-slate-800 flex justify-between items-center text-xs">
+                  <div>
+                    <p className="font-extrabold text-white">Admin ID: {adm.user_id || adm.id}</p>
+                    <p className="text-[10px] text-slate-400 font-mono">Added: {formatDate(adm.created_at)}</p>
+                  </div>
+                  <span className="px-3 py-1 bg-purple-500/20 text-purple-300 font-black rounded-xl text-[10px] uppercase">Super Admin</span>
                 </div>
-                <span className="px-3 py-1 bg-indigo-600/20 text-indigo-400 font-bold rounded-xl text-[10px]">Active</span>
-              </div>
+              ))}
             </div>
           </div>
-        )}
+        </section>
       </main>
 
       {/* EDIT / ACTIVATE BUSINESS MODAL */}
