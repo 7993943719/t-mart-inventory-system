@@ -69,6 +69,40 @@ export async function POST(request: Request) {
 
     const bizId = business_id || membership.business_id;
 
+    // Verify subscription member limit
+    const { data: limitCheck, error: limitErr } = await supabaseAdmin.rpc("check_business_member_limit", {
+      p_business_id: bizId,
+    });
+
+    if (!limitErr && limitCheck && limitCheck.allowed === false) {
+      const limitVal = limitCheck.limit || 5;
+      return NextResponse.json(
+        { error: `Your plan allows only ${limitVal} members. To add more members, contact T Mart Helpline: 7993943719.` },
+        { status: 400 }
+      );
+    }
+
+    if (limitErr) {
+      const { count, error: countErr } = await supabaseAdmin
+        .from("business_members")
+        .select("*", { count: "exact", head: true })
+        .eq("business_id", bizId);
+
+      const { data: subData } = await supabaseAdmin
+        .from("subscriptions")
+        .select("member_limit")
+        .eq("business_id", bizId)
+        .maybeSingle();
+
+      const maxLimit = subData?.member_limit || 5;
+      if (!countErr && (count || 0) >= maxLimit) {
+        return NextResponse.json(
+          { error: `Your plan allows only ${maxLimit} members. To add more members, contact T Mart Helpline: 7993943719.` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Check if user already exists in Supabase Auth
     const { data: listUsersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
     const existingAuthUser = listUsersData?.users?.find(

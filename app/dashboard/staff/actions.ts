@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { verifyUserBusinessAccess, enforceModulePermission, ALLOWED_MODULES } from "@/lib/permissions";
 
 const roleMap = {
   Admin: "admin",
@@ -11,6 +12,7 @@ const roleMap = {
   Delivery: "delivery",
   Owner: "owner",
   Manager: "manager",
+  "Stock Keeper": "stockkeeper",
 } as const;
 
 export async function createStaffMember(formData: {
@@ -48,13 +50,50 @@ export async function createStaffMember(formData: {
   }
 
   const membership = memberships[0];
+  const businessId = membership.business_id;
+
+  // Enforce server-side staff module permission
+  await enforceModulePermission(supabaseServer, user.id, businessId, "staff");
+
   const requesterRole = (membership.role || "").toLowerCase();
   if (!["owner", "admin"].includes(requesterRole)) {
     throw new Error("Only Owner or Admin can add staff members.");
   }
 
-  const businessId = membership.business_id;
+  // Verify subscription member limit
+  const { data: limitCheck, error: limitErr } = await supabaseServer.rpc("check_business_member_limit", {
+    p_business_id: businessId,
+  });
+
+  if (!limitErr && limitCheck && limitCheck.allowed === false) {
+    throw new Error(limitCheck.message || `Your plan allows only ${limitCheck.limit} members. To add more members, contact T Mart Helpline: 7993943719.`);
+  }
+
+  if (limitErr) {
+    const { count, error: countErr } = await supabaseServer
+      .from("business_members")
+      .select("*", { count: "exact", head: true })
+      .eq("business_id", businessId);
+
+    const { data: subData } = await supabaseServer
+      .from("subscriptions")
+      .select("member_limit")
+      .eq("business_id", businessId)
+      .maybeSingle();
+
+    const maxLimit = subData?.member_limit || 5;
+    if (!countErr && (count || 0) >= maxLimit) {
+      throw new Error(`Your plan allows only ${maxLimit} members. To add more members, contact T Mart Helpline: 7993943719.`);
+    }
+  }
+
   const dbRole = roleMap[role as keyof typeof roleMap] || "staff";
+  const defaultPermissions =
+    ["owner", "admin"].includes(dbRole) ? ["billing", "customers", "inventory", "reports", "staff", "settings", "delivery"] :
+    dbRole === "billing" ? ["billing", "customers"] :
+    dbRole === "stockkeeper" ? ["inventory"] :
+    dbRole === "delivery" ? ["delivery"] :
+    ["billing", "inventory"];
 
   // 3. Create Admin Supabase client using service role key (or fallback to publishable if service role is omitted in local dev)
   const supabaseAdmin = createSupabaseAdminClient(
@@ -98,12 +137,13 @@ export async function createStaffMember(formData: {
     console.error("Profile upsert error:", profileErr);
   }
 
-  // 6. Insert business membership with lowercase role
+  // 6. Insert business membership with lowercase role and default permissions
   const { error: memInsertErr } = await supabaseAdmin.from("business_members").insert([
     {
       business_id: businessId,
       user_id: newUserId,
       role: dbRole,
+      permissions: defaultPermissions,
     },
   ]);
 
@@ -121,6 +161,50 @@ export async function createStaffMember(formData: {
   return { success: true, message: `Staff user ${fullName} created successfully` };
 }
 
+export async function updateStaffPermissions(input: {
+  businessMemberId: string;
+  permissions: string[];
+}) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Please log in again.");
+  }
+
+  // Securely verify access scoped to target member's business and requester owner/admin role
+  const { businessId, targetMember } = await verifyUserBusinessAccess(
+    supabase,
+    user.id,
+    input.businessMemberId
+  );
+
+  // Enforce staff module permission
+  await enforceModulePermission(supabase, user.id, businessId, "staff");
+
+  // Prevent modifying owner permissions
+  if ((targetMember.role || "").toLowerCase() === "owner") {
+    throw new Error("Cannot modify permissions of the business Owner.");
+  }
+
+  // Validate module names against explicit allowlist
+  const validPermissions = (input.permissions || []).filter((p) =>
+    (ALLOWED_MODULES as readonly string[]).includes(p)
+  );
+
+  const { error } = await supabase
+    .from("business_members")
+    .update({ permissions: validPermissions })
+    .eq("id", input.businessMemberId)
+    .eq("business_id", businessId);
+
+  if (error) {
+    throw new Error(error.message || "Failed to update permissions.");
+  }
+
+  revalidatePath("/dashboard/staff");
+  return { success: true, message: "Staff permissions updated successfully." };
+}
 
 export async function saveStaffAttendance(input: {
   businessId: string;
@@ -141,6 +225,8 @@ export async function saveStaffAttendance(input: {
   if (authError || !user) {
     throw new Error("Please log in again.");
   }
+
+  await enforceModulePermission(supabase, user.id, input.businessId, "staff");
 
   const { data: memberships, error: membershipError } =
     await supabase
@@ -210,6 +296,8 @@ export async function saveStaffSalary(input: {
     throw new Error("Please log in again.");
   }
 
+  await enforceModulePermission(supabase, user.id, input.businessId, "staff");
+
   const { data: memberships, error: membershipError } =
     await supabase
       .from("business_members")
@@ -269,4 +357,3 @@ export async function saveStaffSalary(input: {
 
   return { success: true, message: "Salary settings saved successfully." };
 }
-
