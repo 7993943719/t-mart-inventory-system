@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, startTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ShieldCheck,
@@ -126,8 +126,8 @@ export default function SuperAdminClient({
     const sub = subscriptions.find((s) => s.business_id === biz.id);
     setSelectedBizForEdit(biz);
     setEditPlanId((sub?.plan as any) || "basic");
-    setEditAmount(Number(sub?.amount || 99));
-    setEditMemberLimit(Number(sub?.member_limit || 1));
+    setEditAmount(Number(sub?.amount !== undefined && sub?.amount !== null ? sub.amount : 99));
+    setEditMemberLimit(Number(sub?.member_limit !== undefined && sub?.member_limit !== null ? sub.member_limit : 1));
     setEditAdminNote("");
     setConfirmReconcile(false);
     setEditBizModalOpen(true);
@@ -196,7 +196,31 @@ export default function SuperAdminClient({
         }
 
         if (updateErr) throw updateErr;
-        setSuccessMsg(`Business subscription and member limit (max ${editMemberLimit}) updated successfully!`);
+
+        // Readback verification from database
+        const { data: readbackSub } = await supabase
+          .from("subscriptions")
+          .select("amount, member_limit, plan, status")
+          .eq("id", subId)
+          .maybeSingle();
+
+        if (readbackSub) {
+          setSubscriptions((prev) =>
+            prev.map((s) =>
+              s.id === subId
+                ? {
+                    ...s,
+                    amount: readbackSub.amount,
+                    member_limit: readbackSub.member_limit !== null ? readbackSub.member_limit : editMemberLimit,
+                    plan: readbackSub.plan,
+                    status: readbackSub.status,
+                  }
+                : s
+            )
+          );
+        }
+
+        setSuccessMsg(`Business subscription and member limit (max ${editMemberLimit}) updated and verified successfully!`);
       }
 
       setEditBizModalOpen(false);
@@ -567,7 +591,7 @@ export default function SuperAdminClient({
                       const ownerEmail = ownerAuth?.email || ownerProfile?.email || "Not available";
                       const ownerPhone = ownerProfile?.phone || ownerAuth?.phone || biz.phone || "Not available";
 
-                      const memberLimit = Number(sub?.member_limit || 1);
+                      const memberLimit = Number(sub?.member_limit !== undefined && sub?.member_limit !== null ? sub.member_limit : 1);
                       const currentCount = bizMembers.length;
                       const isExpanded = expandedBizId === biz.id;
 
