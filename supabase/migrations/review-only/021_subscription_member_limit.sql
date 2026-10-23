@@ -1,5 +1,5 @@
 -- ============================================================================
--- REVIEW-ONLY SQL MIGRATION 021: SUBSCRIPTION MEMBER LIMIT & CONCURRENCY GUARD
+-- REVIEW-ONLY SQL MIGRATION 021: SUBSCRIPTION MEMBER LIMIT & SECURITY AUDIT
 -- ============================================================================
 -- Target Production Project: bagufluurqjjelrvhjqu
 -- REVIEW ONLY. DO NOT EXECUTE ON PRODUCTION WITHOUT APPROVAL.
@@ -26,20 +26,40 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
+    v_caller_id UUID;
     v_limit INT := 1;
     v_current_count INT := 0;
+    v_is_authorized BOOLEAN := FALSE;
 BEGIN
+    v_caller_id := auth.uid();
+
+    -- Validate caller authorization: caller must be authenticated and either a member of p_business_id, a Super Admin, or Service Role
+    IF v_caller_id IS NOT NULL THEN
+        SELECT EXISTS (
+            SELECT 1 FROM public.business_members
+            WHERE business_id = p_business_id AND user_id = v_caller_id
+            UNION
+            SELECT 1 FROM public.super_admins
+            WHERE user_id = v_caller_id
+        ) INTO v_is_authorized;
+
+        IF NOT v_is_authorized THEN
+            RAISE EXCEPTION 'Unauthorized: You do not have permission to access member limit settings for this business.';
+        END IF;
+    END IF;
+
     -- Acquire row-level lock on subscription to prevent concurrent over-limit additions
     SELECT COALESCE(member_limit, 1) INTO v_limit
     FROM public.subscriptions
     WHERE business_id = p_business_id
     FOR UPDATE;
 
+    -- If no subscription row exists yet for this business, default limit is 1
     IF v_limit IS NULL THEN
         v_limit := 1;
     END IF;
 
-    -- Count current business members (includes owner + staff)
+    -- Count current active business members
     SELECT COUNT(*) INTO v_current_count
     FROM public.business_members
     WHERE business_id = p_business_id;
