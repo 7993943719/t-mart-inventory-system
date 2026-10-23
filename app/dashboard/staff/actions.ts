@@ -81,7 +81,7 @@ export async function createStaffMember(formData: {
       .eq("business_id", businessId)
       .maybeSingle();
 
-    const maxLimit = subData?.member_limit || 5;
+    const maxLimit = subData?.member_limit || 1;
     if (!countErr && (count || 0) >= maxLimit) {
       throw new Error(`Your plan allows only ${maxLimit} members. To add more members, contact T Mart Helpline: 7993943719.`);
     }

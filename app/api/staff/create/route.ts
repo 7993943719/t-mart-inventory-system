@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     });
 
     if (!limitErr && limitCheck && limitCheck.allowed === false) {
-      const limitVal = limitCheck.limit || 5;
+      const limitVal = limitCheck.limit || 1;
       return NextResponse.json(
         { error: `Your plan allows only ${limitVal} members. To add more members, contact T Mart Helpline: 7993943719.` },
         { status: 400 }
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         .eq("business_id", bizId)
         .maybeSingle();
 
-      const maxLimit = subData?.member_limit || 5;
+      const maxLimit = subData?.member_limit || 1;
       if (!countErr && (count || 0) >= maxLimit) {
         return NextResponse.json(
           { error: `Your plan allows only ${maxLimit} members. To add more members, contact T Mart Helpline: 7993943719.` },

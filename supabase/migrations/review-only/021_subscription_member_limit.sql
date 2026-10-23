@@ -7,13 +7,13 @@
 
 BEGIN;
 
--- 1. Add member_limit column to subscriptions table if not exists (default 5 members)
+-- 1. Add member_limit column to subscriptions table if not exists (default 1 member, including owner)
 ALTER TABLE IF EXISTS public.subscriptions
-    ADD COLUMN IF NOT EXISTS member_limit INT DEFAULT 5;
+    ADD COLUMN IF NOT EXISTS member_limit INT DEFAULT 1;
 
--- Ensure existing null values default to 5 without overwriting custom numbers
+-- Ensure existing null values default to 1 without overwriting custom numbers
 UPDATE public.subscriptions
-SET member_limit = 5
+SET member_limit = 1
 WHERE member_limit IS NULL;
 
 -- 2. Concurrency-safe atomic member limit check function
@@ -26,20 +26,20 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-    v_limit INT := 5;
+    v_limit INT := 1;
     v_current_count INT := 0;
 BEGIN
     -- Acquire row-level lock on subscription to prevent concurrent over-limit additions
-    SELECT COALESCE(member_limit, 5) INTO v_limit
+    SELECT COALESCE(member_limit, 1) INTO v_limit
     FROM public.subscriptions
     WHERE business_id = p_business_id
     FOR UPDATE;
 
     IF v_limit IS NULL THEN
-        v_limit := 5;
+        v_limit := 1;
     END IF;
 
-    -- Count current business members
+    -- Count current business members (includes owner + staff)
     SELECT COUNT(*) INTO v_current_count
     FROM public.business_members
     WHERE business_id = p_business_id;

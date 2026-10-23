@@ -101,9 +101,9 @@ export default function SuperAdminClient({
   const [permDeleting, setPermDeleting] = useState(false);
 
   const plansList = [
-    { id: "basic", label: "Basic Plan", amount: 99, defaultLimit: 5, desc: "Essential POS billing & stock management" },
-    { id: "pro", label: "Pro Plan", amount: 250, defaultLimit: 15, desc: "Advanced multi-counter inventory & staff management" },
-    { id: "plus", label: "Plus Plan", amount: 450, defaultLimit: 50, desc: "Full enterprise automation & VIP support" },
+    { id: "basic", label: "Basic Plan", amount: 99, defaultLimit: 1, desc: "Essential POS billing & stock management" },
+    { id: "pro", label: "Pro Plan", amount: 250, defaultLimit: 1, desc: "Advanced multi-counter inventory & staff management" },
+    { id: "plus", label: "Plus Plan", amount: 450, defaultLimit: 1, desc: "Full enterprise automation & VIP support" },
   ];
 
   const handleRefresh = async () => {
@@ -125,7 +125,7 @@ export default function SuperAdminClient({
     setSelectedBizForEdit(biz);
     setEditPlanId((sub?.plan as any) || "basic");
     setEditAmount(Number(sub?.amount || 99));
-    setEditMemberLimit(Number(sub?.member_limit || 5));
+    setEditMemberLimit(Number(sub?.member_limit || 1));
     setEditAdminNote("");
     setEditBizModalOpen(true);
   };
@@ -547,7 +547,7 @@ export default function SuperAdminClient({
                       const ownerEmail = ownerAuth?.email || ownerProfile?.email || "Not available";
                       const ownerPhone = ownerProfile?.phone || ownerAuth?.phone || biz.phone || "Not available";
 
-                      const memberLimit = Number(sub?.member_limit || 5);
+                      const memberLimit = Number(sub?.member_limit || 1);
                       const currentCount = bizMembers.length;
                       const isExpanded = expandedBizId === biz.id;
 
