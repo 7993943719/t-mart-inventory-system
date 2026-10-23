@@ -95,14 +95,19 @@ export async function createStaffMember(formData: {
     dbRole === "delivery" ? ["delivery"] :
     ["billing", "inventory"];
 
-  // 3. Create Admin Supabase client using service role key (or fallback to publishable if service role is omitted in local dev)
+  // 3. Create Admin Supabase client using server-only Service Role Key (fail-closed if missing)
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for administrative staff operations.");
+  }
+
   const supabaseAdmin = createSupabaseAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    serviceRoleKey,
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
 
-  // 4. Create new Auth user securely via Admin API (does not affect Owner's browser session)
+  // 4. Create new Auth user securely via Admin API
   const { data: newUserData, error: createUserErr } = await supabaseAdmin.auth.admin.createUser({
     email: email.trim(),
     password: password,
@@ -148,12 +153,13 @@ export async function createStaffMember(formData: {
   ]);
 
   if (memInsertErr) {
-    console.error("Business member insert error:", {
-      message: memInsertErr?.message,
-      details: memInsertErr?.details,
-      hint: memInsertErr?.hint,
-      code: memInsertErr?.code,
-    });
+    console.error("Business member insert error:", memInsertErr);
+    // Cleanup newly created Auth user to prevent orphaned account if membership assignment fails
+    try {
+      await supabaseAdmin.auth.admin.deleteUser(newUserId);
+    } catch (cleanupErr) {
+      console.error("Auth user cleanup error:", cleanupErr);
+    }
     throw new Error(memInsertErr.message || "Failed to assign user to business.");
   }
 

@@ -45,9 +45,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Owner role cannot be assigned through Add Staff." }, { status: 400 });
     }
 
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      return NextResponse.json({ error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required." }, { status: 500 });
+    }
+
     const supabaseAdmin = createClient(
       supabaseUrl,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseKey,
+      serviceRoleKey,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
 
@@ -110,6 +115,7 @@ export async function POST(request: Request) {
     );
 
     let targetUserId = existingAuthUser?.id;
+    let isNewUserCreated = false;
 
     if (!existingAuthUser) {
       // 1. Create new Auth user if not exists
@@ -135,6 +141,7 @@ export async function POST(request: Request) {
       if (!targetUserId) {
         return NextResponse.json({ error: "Failed to obtain new user ID." }, { status: 400 });
       }
+      isNewUserCreated = true;
     }
 
     // Check if target user already belongs to this business
@@ -180,6 +187,14 @@ export async function POST(request: Request) {
     ]);
 
     if (insertMemberErr) {
+      // Cleanup newly created Auth user on membership insert failure
+      if (isNewUserCreated && targetUserId) {
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(targetUserId);
+        } catch (cleanupErr) {
+          console.error("Auth user cleanup error:", cleanupErr);
+        }
+      }
       return NextResponse.json({ error: insertMemberErr.message || "Failed to assign staff to business." }, { status: 400 });
     }
 
