@@ -268,3 +268,92 @@ export async function adminPermanentlyDeleteBusinessAction(input: { businessId: 
   revalidatePath("/super-admin");
   return { success: true, message: `Business "${biz.name}" and all associated data and storage files have been permanently deleted.` };
 }
+
+export async function adminReconcileBusinessMembershipsAction(input: {
+  businessId: string;
+  newMemberLimit: number;
+}) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) throw new Error("Authentication required.");
+
+  const { data: isSuper, error: rpcError } = await supabase.rpc("is_super_admin", { p_user_id: user.id });
+  if (rpcError || !isSuper) throw new Error("Access Denied: Super Owner authorization required.");
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!serviceRoleKey || !supabaseUrl) throw new Error("Server configuration error.");
+
+  const supabaseAdmin = createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+
+  // 1. Fetch business and current members
+  const { data: biz, error: bizErr } = await supabaseAdmin
+    .from("businesses")
+    .select("id, name, owner_id")
+    .eq("id", input.businessId)
+    .single();
+
+  if (bizErr || !biz) throw new Error("Business not found.");
+
+  const { data: bizMembers, error: memErr } = await supabaseAdmin
+    .from("business_members")
+    .select("*")
+    .eq("business_id", input.businessId)
+    .order("created_at", { ascending: true });
+
+  if (memErr) throw new Error("Failed to fetch business members.");
+
+  const totalCurrent = (bizMembers || []).length;
+  let removedCount = 0;
+
+  if (input.newMemberLimit < totalCurrent) {
+    const excessCount = totalCurrent - input.newMemberLimit;
+
+    // Filter staff members to delete (protect business owner)
+    const nonOwnerMembers = (bizMembers || []).filter(
+      (m) => m.user_id !== biz.owner_id && String(m.role).toLowerCase() !== "owner"
+    );
+
+    if (nonOwnerMembers.length < excessCount) {
+      throw new Error(`Cannot reconcile: business owner membership cannot be removed.`);
+    }
+
+    // Identify target memberships to remove (newest non-owner members first)
+    const targetMembersToRemove = nonOwnerMembers.slice(-excessCount);
+    const targetMemberIds = targetMembersToRemove.map((m) => m.id);
+
+    // Remove excess business memberships for this business ONLY
+    const { error: delErr } = await supabaseAdmin
+      .from("business_members")
+      .delete()
+      .in("id", targetMemberIds)
+      .eq("business_id", input.businessId);
+
+    if (delErr) throw new Error(`Failed to reconcile memberships: ${delErr.message}`);
+    removedCount = targetMemberIds.length;
+  }
+
+  // 2. Update subscription member limit
+  let updateErr = null;
+  const res1 = await supabaseAdmin
+    .from("subscriptions")
+    .update({
+      member_limit: input.newMemberLimit,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("business_id", input.businessId);
+
+  updateErr = res1.error;
+
+  if (updateErr && (updateErr.message?.includes("member_limit") || updateErr.code === "PGRST204" || updateErr.code === "42703")) {
+    console.warn("member_limit column pending migration; updating limit logic only.");
+  } else if (updateErr) {
+    throw new Error(updateErr.message);
+  }
+
+  revalidatePath("/super-admin");
+  return {
+    success: true,
+    message: `Member limit updated to ${input.newMemberLimit}.${removedCount > 0 ? ` Reconciled ${removedCount} excess staff memberships.` : ""}`,
+  };
+}

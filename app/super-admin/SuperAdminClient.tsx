@@ -41,6 +41,7 @@ import {
   adminDeactivateBusinessAction,
   adminArchiveBusinessAction,
   adminPermanentlyDeleteBusinessAction,
+  adminReconcileBusinessMembershipsAction,
 } from "./actions";
 
 export interface Props {
@@ -91,8 +92,9 @@ export default function SuperAdminClient({
   const [selectedBizForEdit, setSelectedBizForEdit] = useState<any | null>(null);
   const [editPlanId, setEditPlanId] = useState<"basic" | "pro" | "plus">("basic");
   const [editAmount, setEditAmount] = useState<number>(99);
-  const [editMemberLimit, setEditMemberLimit] = useState<number>(5);
+  const [editMemberLimit, setEditMemberLimit] = useState<number>(1);
   const [editAdminNote, setEditAdminNote] = useState("");
+  const [confirmReconcile, setConfirmReconcile] = useState(false);
 
   // Permanent Delete Business Modal State
   const [permDeleteModalOpen, setPermDeleteModalOpen] = useState(false);
@@ -127,6 +129,7 @@ export default function SuperAdminClient({
     setEditAmount(Number(sub?.amount || 99));
     setEditMemberLimit(Number(sub?.member_limit || 1));
     setEditAdminNote("");
+    setConfirmReconcile(false);
     setEditBizModalOpen(true);
   };
 
@@ -146,6 +149,13 @@ export default function SuperAdminClient({
         throw new Error("No subscription record found for this business.");
       }
 
+      const bizMembers = membersByBiz.get(selectedBizForEdit.id) || [];
+      const isLowering = editMemberLimit < bizMembers.length;
+
+      if (isLowering && !confirmReconcile) {
+        throw new Error(`Current member count (${bizMembers.length}) exceeds new limit (${editMemberLimit}). Please check the reconciliation confirmation box.`);
+      }
+
       const { data, error } = await supabase.rpc("admin_manual_activate_subscription", {
         p_subscription_id: subId,
         p_plan: editPlanId,
@@ -155,30 +165,40 @@ export default function SuperAdminClient({
       if (error) throw error;
       if (data && data.success === false) throw new Error(data.error || "Update failed");
 
-      let updateErr = null;
-      const res1 = await supabase
-        .from("subscriptions")
-        .update({
-          amount: editAmount,
-          member_limit: editMemberLimit,
-        })
-        .eq("id", subId);
-      updateErr = res1.error;
-
-      if (updateErr && (updateErr.message?.includes("member_limit") || updateErr.code === "PGRST204" || updateErr.code === "42703")) {
-        console.warn("member_limit column pending migration; updating amount only.");
-        const res2 = await supabase
+      if (isLowering) {
+        const reconRes = await adminReconcileBusinessMembershipsAction({
+          businessId: selectedBizForEdit.id,
+          newMemberLimit: editMemberLimit,
+        });
+        if (reconRes && reconRes.success) {
+          setSuccessMsg(reconRes.message);
+        }
+      } else {
+        let updateErr = null;
+        const res1 = await supabase
           .from("subscriptions")
           .update({
             amount: editAmount,
+            member_limit: editMemberLimit,
           })
           .eq("id", subId);
-        updateErr = res2.error;
+        updateErr = res1.error;
+
+        if (updateErr && (updateErr.message?.includes("member_limit") || updateErr.code === "PGRST204" || updateErr.code === "42703")) {
+          console.warn("member_limit column pending migration; updating amount only.");
+          const res2 = await supabase
+            .from("subscriptions")
+            .update({
+              amount: editAmount,
+            })
+            .eq("id", subId);
+          updateErr = res2.error;
+        }
+
+        if (updateErr) throw updateErr;
+        setSuccessMsg(`Business subscription and member limit (max ${editMemberLimit}) updated successfully!`);
       }
 
-      if (updateErr) throw updateErr;
-
-      setSuccessMsg(`Business subscription and member limit (max ${editMemberLimit}) updated successfully!`);
       setEditBizModalOpen(false);
       setSelectedBizForEdit(null);
       setTimeout(() => setSuccessMsg(""), 5000);
@@ -855,6 +875,33 @@ export default function SuperAdminClient({
                   />
                 </div>
               </div>
+
+              {(() => {
+                const bizMembers = membersByBiz.get(selectedBizForEdit.id) || [];
+                const isLowering = editMemberLimit < bizMembers.length;
+                if (!isLowering) return null;
+
+                const excessCount = bizMembers.length - editMemberLimit;
+                return (
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-2 text-xs">
+                    <p className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" /> Member Limit Reconciliation Warning
+                    </p>
+                    <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                      Current active member count (<strong className="text-white">{bizMembers.length}</strong>) exceeds the new limit (<strong className="text-white">{editMemberLimit}</strong>). Saving will remove <strong className="text-white">{excessCount}</strong> excess non-owner staff memberships for this store.
+                    </p>
+                    <label className="flex items-center gap-2 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={confirmReconcile}
+                        onChange={(e) => setConfirmReconcile(e.target.checked)}
+                        className="w-4 h-4 rounded border-amber-500 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="font-extrabold text-amber-200 text-xs">Confirm reconciling {excessCount} excess staff memberships for {selectedBizForEdit.name}</span>
+                    </label>
+                  </div>
+                );
+              })()}
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">Admin Notes / Reference</label>
