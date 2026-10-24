@@ -54,7 +54,7 @@ export default function StockPage() {
 
   // Bill scan OCR items state
   const [ocrItems, setOcrItems] = useState<any[]>([]);
-  const [supplierName, setSupplierName] = useState("");
+  const [supplierName, setSupplierName] = useState("Unknown Vendor");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
 
@@ -255,7 +255,7 @@ export default function StockPage() {
     setCapturedImage(null);
     setCapturedFile(null);
     setOcrItems([]);
-    setSupplierName("");
+    setSupplierName("Unknown Vendor");
     setInvoiceNo("");
     setInvoiceDate("");
     setPaymentAmountPaid("");
@@ -289,7 +289,7 @@ export default function StockPage() {
 
   const handleOpenManualPurchase = () => {
     resetScanState();
-    setSupplierName("");
+    setSupplierName("Unknown Vendor");
     setInvoiceNo("");
     setInvoiceDate(new Date().toISOString().split("T")[0]);
     setOcrItems([
@@ -429,7 +429,7 @@ export default function StockPage() {
         throw new Error(`AI/OCR analysis failed: ${fnError.message}`);
       }
 
-      const supplier = aiResponse?.supplier || aiResponse?.supplier_name || "Supplier";
+      const supplier = aiResponse?.supplier || aiResponse?.supplier_name || "Unknown Vendor";
       const invNo = aiResponse?.invoice_number || aiResponse?.invoice_no || "INV-" + Math.floor(100000 + Math.random() * 900000);
       const invDate = aiResponse?.invoice_date || new Date().toISOString().split("T")[0];
       const extractedList = aiResponse?.products || aiResponse?.items || aiResponse?.extracted_products || [];
