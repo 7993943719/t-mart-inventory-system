@@ -131,9 +131,44 @@ export default function PurchasesPage() {
       if (error) {
         console.error("Error fetching suppliers:", error);
         setErrorMsg(error.message);
-      } else {
-        setSuppliers(data || []);
       }
+
+      const registeredSuppliers = data || [];
+      const regNamesSet = new Set(registeredSuppliers.map((s: any) => (s.name || "").trim().toLowerCase()));
+
+      let virtualSuppliers: any[] = [];
+      const bizId = business?.id || memberships[0]?.businesses?.id;
+      if (bizId) {
+        const { data: billsData } = await supabase
+          .from("purchase_bills")
+          .select("supplier_name")
+          .eq("business_id", bizId)
+          .neq("status", "deleted");
+
+        if (billsData) {
+          const uniqueBillSuppliers = new Set<string>();
+          for (const b of billsData) {
+            const rawName = (b.supplier_name || "").trim();
+            const displayName = rawName || "Unknown Vendor";
+            const normName = displayName.toLowerCase();
+            if (!regNamesSet.has(normName) && normName !== "") {
+              uniqueBillSuppliers.add(displayName);
+            }
+          }
+
+          virtualSuppliers = Array.from(uniqueBillSuppliers).map((name) => ({
+            id: `virtual_${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+            name: name,
+            phone: "",
+            email: "",
+            address: "",
+            gstin: "",
+            isVirtual: true,
+          }));
+        }
+      }
+
+      setSuppliers([...registeredSuppliers, ...virtualSuppliers]);
     } catch (err: any) {
       console.error("Failed to load vendors data", err);
       setErrorMsg(err.message || "Failed to load vendors.");
@@ -329,7 +364,14 @@ export default function PurchasesPage() {
                     {s.name.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h4 className="font-extrabold text-slate-900 text-sm">{s.name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-extrabold text-slate-900 text-sm">{s.name}</h4>
+                      {s.isVirtual && (
+                        <span className="px-2 py-0.5 bg-amber-500/10 text-amber-700 rounded-md text-[9px] font-black uppercase border border-amber-500/20">
+                          From Bills
+                        </span>
+                      )}
+                    </div>
                     {s.gstin && <p className="text-[10px] text-slate-400 font-mono">GSTIN: {s.gstin}</p>}
                   </div>
                 </div>
@@ -365,21 +407,41 @@ export default function PurchasesPage() {
                 >
                   <FileText className="w-3.5 h-3.5" /> Bills
                 </button>
-                <button
-                  onClick={() => handleOpenEditModal(s)}
-                  className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold rounded-xl text-xs transition cursor-pointer min-h-[38px] inline-flex items-center gap-1"
-                >
-                  <Edit className="w-3.5 h-3.5" /> Edit
-                </button>
-                <button
-                  onClick={() => {
-                    setSupplierToDelete(s);
-                    setDeleteModalOpen(true);
-                  }}
-                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold rounded-xl text-xs transition cursor-pointer min-h-[38px] inline-flex items-center gap-1"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete
-                </button>
+                {s.isVirtual ? (
+                  <button
+                    onClick={() => {
+                      setName(s.name);
+                      setPhone("");
+                      setEmail("");
+                      setAddress("");
+                      setGstin("");
+                      setEditingSupplier(null);
+                      setAddModalOpen(true);
+                    }}
+                    className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold rounded-xl text-xs transition cursor-pointer min-h-[38px] inline-flex items-center gap-1"
+                    title="Promote to real vendor profile"
+                  >
+                    + Create Profile
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleOpenEditModal(s)}
+                      className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold rounded-xl text-xs transition cursor-pointer min-h-[38px] inline-flex items-center gap-1"
+                    >
+                      <Edit className="w-3.5 h-3.5" /> Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSupplierToDelete(s);
+                        setDeleteModalOpen(true);
+                      }}
+                      className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold rounded-xl text-xs transition cursor-pointer min-h-[38px] inline-flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}
