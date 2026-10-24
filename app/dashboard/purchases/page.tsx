@@ -62,7 +62,10 @@ export default function PurchasesPage() {
       const bills = allBills.filter((b: any) => {
         if (b.status === "deleted") return false;
         const sName = (b.supplier_name || "").trim().toLowerCase();
-        return sName === targetName || (!sName && targetName === "general supplier") || (sName === "general supplier" && targetName === "general supplier");
+        const isTargetUnknown = targetName === "unknown vendor" || targetName === "general supplier" || !targetName;
+        const isBillUnknown = !sName || sName === "unknown vendor" || sName === "general supplier";
+        if (isTargetUnknown && isBillUnknown) return true;
+        return sName === targetName;
       });
 
       const billIds = bills.map((b: any) => b.id);
