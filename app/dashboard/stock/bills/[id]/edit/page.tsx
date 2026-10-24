@@ -188,7 +188,7 @@ export default function EditPurchaseBillPage() {
       if (!bizId) throw new Error("Business context not found.");
 
       const payloadJson = {
-        supplier_name: supplierName.trim() || "General Supplier",
+        supplier_name: supplierName.trim() || "Unknown Vendor",
         invoice_no: invoiceNo.trim() || "INV-001",
         invoice_date: invoiceDate || new Date().toISOString().split("T")[0],
         allocation_method: allocationMethod,

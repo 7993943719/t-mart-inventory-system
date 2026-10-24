@@ -342,7 +342,7 @@ export default function BillDetailPage() {
                   <h2 className="text-lg font-black text-slate-900">Purchase Bill Confirmed</h2>
                 </div>
                 <p className="text-xs font-mono text-blue-600 font-bold mt-1">Invoice: #{bill.invoice_no}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Vendor: <strong className="text-slate-900">{bill.supplier_name}</strong></p>
+                <p className="text-xs text-slate-500 mt-0.5">Vendor: <strong className="text-slate-900">{bill.supplier_name || "Unknown Vendor"}</strong></p>
                 <p className="text-[11px] text-slate-400">Date: {bill.invoice_date || new Date(bill.created_at).toLocaleDateString()}</p>
               </div>
 

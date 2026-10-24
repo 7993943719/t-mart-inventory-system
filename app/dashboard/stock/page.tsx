@@ -533,7 +533,7 @@ export default function StockPage() {
 
       const { data: rpcResult, error: rpcError } = await supabase.rpc("confirm_purchase_bill", {
         p_business_id: businessId,
-        p_supplier_name: supplierName.trim() || "General Supplier",
+        p_supplier_name: supplierName.trim() || "Unknown Vendor",
         p_invoice_no: invoiceNo.trim() || "INV-001",
         p_invoice_date: invoiceDate || new Date().toISOString().split("T")[0],
         p_allocation_method: allocationMethod,

@@ -9,7 +9,7 @@ import { ArrowLeft, CheckCircle2, Loader2, AlertTriangle, Package, DollarSign, S
 export default function BillReviewPage() {
   const params = useParams();
   const router = useRouter();
-  const billId = params.billId as string;
+  const billId = params.id as string;
   const [supabase] = useState(() => createClient());
 
   const [bill, setBill] = useState<any>(null);
@@ -182,7 +182,7 @@ export default function BillReviewPage() {
                 {isAlreadyAdded ? "Stock Added" : "Pending Stock Addition"}
               </span>
               <h2 className="text-xl font-black text-slate-900 mt-1">Invoice #{bill.invoice_no}</h2>
-              <p className="text-[11px] text-slate-400">Supplier: {bill.supplier_name} • Date: {bill.invoice_date || "N/A"}</p>
+              <p className="text-[11px] text-slate-400">Supplier: {bill.supplier_name || "Unknown Vendor"} • Date: {bill.invoice_date || "N/A"}</p>
             </div>
           </div>
           <div className="text-right">
