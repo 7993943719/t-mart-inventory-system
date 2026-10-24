@@ -1,12 +1,18 @@
-"use client";
+import React from "react";
+import Link from "next/link";
+import { Store, Check, ArrowRight, Sparkles, Building2, AlertCircle } from "lucide-react";
+import { selectBusinessPlanAction } from "./actions";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Store, Check, ArrowRight, Sparkles, Building2 } from "lucide-react";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export default function SelectPlanPage() {
-  const router = useRouter();
-  const [selectedPlan, setSelectedPlan] = useState("basic");
+export default async function SelectPlanPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const errorMsg = params.error;
 
   const plans = [
     {
@@ -35,17 +41,6 @@ export default function SelectPlanPage() {
     },
   ];
 
-  const handleSkip = () => {
-    // Navigates straight to normal dashboard without losing trial or business
-    router.push("/dashboard?success=business_created");
-  };
-
-  const handleChoosePlan = (planId: string) => {
-    setSelectedPlan(planId);
-    // Navigates to dashboard after recording preference
-    router.push("/dashboard?success=business_created");
-  };
-
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans antialiased">
       <div className="w-full max-w-4xl bg-slate-950 rounded-3xl border border-slate-800 p-6 sm:p-10 space-y-8 shadow-2xl">
@@ -63,28 +58,27 @@ export default function SelectPlanPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 min-h-[44px]"
+          <Link
+            href="/dashboard?success=business_created"
+            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs rounded-xl transition flex items-center gap-1.5 min-h-[44px]"
           >
             Skip for now →
-          </button>
+          </Link>
         </div>
+
+        {errorMsg && (
+          <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-2xl text-xs font-bold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" /> {decodeURIComponent(errorMsg)}
+          </div>
+        )}
 
         {/* PLAN CARDS GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {plans.map((p) => {
-            const isSelected = selectedPlan === p.id;
             return (
               <div
                 key={p.id}
-                onClick={() => setSelectedPlan(p.id)}
-                className={`p-6 rounded-2xl border-2 cursor-pointer transition space-y-5 flex flex-col justify-between relative ${
-                  isSelected
-                    ? "border-indigo-500 bg-indigo-600/10 shadow-xl shadow-indigo-600/10"
-                    : "border-slate-800 bg-slate-900/50 hover:border-slate-700"
-                }`}
+                className="p-6 rounded-2xl border-2 border-slate-800 bg-slate-900/50 hover:border-slate-700 transition space-y-5 flex flex-col justify-between relative"
               >
                 {p.popular && (
                   <span className="absolute -top-3 right-4 px-2.5 py-0.5 bg-indigo-600 text-white font-black text-[9px] uppercase rounded-full tracking-widest shadow-xs">
@@ -97,15 +91,6 @@ export default function SelectPlanPage() {
                     <span className="text-xs font-black text-indigo-400 uppercase tracking-wider">
                       {p.name}
                     </span>
-                    <div
-                      className={`w-5 h-5 rounded-full border flex items-center justify-center text-[10px] ${
-                        isSelected
-                          ? "bg-indigo-600 border-indigo-500 text-white"
-                          : "border-slate-700"
-                      }`}
-                    >
-                      {isSelected && <Check className="w-3 h-3" />}
-                    </div>
                   </div>
 
                   <div>
@@ -122,20 +107,15 @@ export default function SelectPlanPage() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleChoosePlan(p.id);
-                  }}
-                  className={`w-full py-3 text-xs font-black rounded-xl transition cursor-pointer min-h-[44px] ${
-                    isSelected
-                      ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20"
-                      : "bg-slate-800 hover:bg-slate-700 text-slate-200"
-                  }`}
-                >
-                  Select {p.name} Plan
-                </button>
+                <form action={selectBusinessPlanAction}>
+                  <input type="hidden" name="planId" value={p.id} />
+                  <button
+                    type="submit"
+                    className="w-full py-3 text-xs font-black rounded-xl transition cursor-pointer min-h-[44px] flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20"
+                  >
+                    Select {p.name} Plan
+                  </button>
+                </form>
               </div>
             );
           })}
@@ -146,13 +126,12 @@ export default function SelectPlanPage() {
           <p>
             Your 3-day free trial gives you full access to test all TWEB features.
           </p>
-          <button
-            type="button"
-            onClick={handleSkip}
-            className="text-xs font-bold text-indigo-400 hover:text-indigo-300 cursor-pointer underline flex items-center gap-1"
+          <Link
+            href="/dashboard?success=business_created"
+            className="text-xs font-bold text-indigo-400 hover:text-indigo-300 underline flex items-center gap-1"
           >
             Continue to Dashboard →
-          </button>
+          </Link>
         </div>
       </div>
     </main>

@@ -241,32 +241,43 @@ export async function adminPermanentlyDeleteBusinessAction(input: { businessId: 
     throw new Error("Business name confirmation does not match. Permanent deletion aborted.");
   }
 
-  // Storage cleanup (attempt removing files from common buckets)
+  // 1. Perform atomic database deletion via RPC FIRST inside a single database transaction
+  const { data: rpcData, error: rpcDelErr } = await supabase.rpc("permanently_delete_business", {
+    p_business_id: input.businessId,
+  });
+
+  if (rpcDelErr) {
+    console.error("Atomic business deletion RPC error:", rpcDelErr);
+    throw new Error(rpcDelErr.message || "Failed to permanently delete business. Please ensure Migration 024 is installed in Supabase.");
+  }
+
+  if (rpcData && rpcData.success === false) {
+    throw new Error(rpcData.error || "Failed to permanently delete business.");
+  }
+
+  // 2. Storage cleanup executes ONLY AFTER database deletion succeeds
   const buckets = ["products", "bills", "receipts", "avatars"];
+  let storageNotice = "";
   for (const bucket of buckets) {
     try {
       const { data: listData } = await supabaseAdmin.storage.from(bucket).list(input.businessId);
       if (listData && listData.length > 0) {
         const filePaths = listData.map((f: any) => `${input.businessId}/${f.name}`);
-        await supabaseAdmin.storage.from(bucket).remove(filePaths);
+        const { error: removeErr } = await supabaseAdmin.storage.from(bucket).remove(filePaths);
+        if (removeErr) {
+          storageNotice += `Bucket ${bucket}: ${removeErr.message}. `;
+        }
       }
-    } catch (storageErr) {
-      console.warn(`Storage cleanup notice for bucket ${bucket}:`, storageErr);
+    } catch (storageErr: any) {
+      storageNotice += `Bucket ${bucket} warning: ${storageErr.message || storageErr}. `;
     }
   }
 
-  // Permanently delete business record (cascades to all dependent database records via ON DELETE CASCADE)
-  const { error: delBizErr } = await supabaseAdmin
-    .from("businesses")
-    .delete()
-    .eq("id", input.businessId);
-
-  if (delBizErr) {
-    throw new Error(`Failed to permanently delete business: ${delBizErr.message}`);
-  }
-
   revalidatePath("/super-admin");
-  return { success: true, message: `Business "${biz.name}" and all associated data and storage files have been permanently deleted.` };
+  return {
+    success: true,
+    message: `Business "${biz.name}" and all associated database records have been permanently deleted.${storageNotice ? ` Storage notice: ${storageNotice}` : ""}`
+  };
 }
 
 export async function adminReconcileBusinessMembershipsAction(input: {
