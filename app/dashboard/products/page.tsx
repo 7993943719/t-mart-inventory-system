@@ -5,6 +5,7 @@ import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout
 import { createClient } from "@/lib/supabase/client";
 import { Product } from "@/lib/types";
 import { AddProductModal } from "@/components/dashboard/AddProductModal";
+import { createCategoryAction, updateCategoryAction, deleteCategoryAction } from "./actions";
 
 export default function ProductsPage() {
   const [supabase] = useState(() => createClient());
@@ -21,12 +22,44 @@ export default function ProductsPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
+  // Manage Categories Modal State
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [categoriesList, setCategoriesList] = useState<any[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategory, setEditingCategory] = useState<any | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [submittingCat, setSubmittingCat] = useState(false);
+  const [businessId, setBusinessId] = useState<string | null>(null);
+
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
   const [businessName, setBusinessName] = useState("Perikapally");
   const [userName, setUserName] = useState("Admin");
   const [role, setRole] = useState("OWNER");
+
+  const loadCategories = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: memberships } = await supabase
+        .from("business_members")
+        .select("business_id")
+        .eq("user_id", user.id);
+      if (memberships && memberships.length > 0) {
+        const bizId = memberships[0].business_id;
+        setBusinessId(bizId);
+        const { data: cats } = await supabase
+          .from("categories")
+          .select("*")
+          .eq("business_id", bizId)
+          .order("name", { ascending: true });
+        if (cats) setCategoriesList(cats);
+      }
+    } catch (err) {
+      console.error("Error loading categories:", err);
+    }
+  };
 
   const loadProducts = async () => {
     setLoading(true);
@@ -40,8 +73,10 @@ export default function ProductsPage() {
         .eq("user_id", user.id);
 
       if (memberships && memberships.length > 0) {
-        setBusinessName(memberships[0].businesses?.name || "Perikapally");
+        const biz = memberships[0].businesses;
+        setBusinessName(biz?.name || "Perikapally");
         setRole(memberships[0].role || "OWNER");
+        setBusinessId(memberships[0].business_id);
       }
 
       const { data: prof } = await supabase
@@ -63,6 +98,8 @@ export default function ProductsPage() {
       } else {
         setProducts(data || []);
       }
+
+      await loadCategories();
     } catch (err: any) {
       console.error("Failed to load products", err);
       setErrorMsg(err.message || "Failed to load products");
@@ -79,7 +116,7 @@ export default function ProductsPage() {
   const inStockCount = products.filter((p) => Number(p.stock_quantity || 0) > Number(p.minimum_stock || 10)).length;
   const lowStockCount = products.filter((p) => Number(p.stock_quantity || 0) > 0 && Number(p.stock_quantity || 0) <= Number(p.minimum_stock || 10)).length;
 
-  const categories = Array.from(new Set(products.map((p) => p.category)));
+  const categories = Array.from(new Set([...categoriesList.map(c => c.name), ...products.map((p) => p.category).filter(Boolean)]));
 
   const filteredProducts = products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || (p.barcode || "").includes(search.toLowerCase());
@@ -165,6 +202,61 @@ export default function ProductsPage() {
     handleEdit(product);
   };
 
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim() || !businessId) return;
+    setSubmittingCat(true);
+    setErrorMsg("");
+    try {
+      const res = await createCategoryAction({ businessId, name: newCategoryName.trim() });
+      if (res && res.success) {
+        setSuccessMsg(res.message);
+        setNewCategoryName("");
+        await loadCategories();
+        await loadProducts();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to create category");
+    } finally {
+      setSubmittingCat(false);
+    }
+  };
+
+  const handleSaveRenameCategory = async (catId: string) => {
+    if (!editCategoryName.trim() || !businessId) return;
+    setErrorMsg("");
+    try {
+      const res = await updateCategoryAction({ businessId, categoryId: catId, name: editCategoryName.trim() });
+      if (res && res.success) {
+        setSuccessMsg(res.message);
+        setEditingCategory(null);
+        await loadCategories();
+        await loadProducts();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to rename category");
+    }
+  };
+
+  const handleDeleteCategory = async (catId: string) => {
+    if (!businessId) return;
+    if (!confirm("Are you sure you want to delete this category?")) return;
+    setErrorMsg("");
+    try {
+      const res = await deleteCategoryAction({ businessId, categoryId: catId });
+      if (res && res.success) {
+        setSuccessMsg(res.message);
+        await loadCategories();
+        await loadProducts();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to delete category");
+    }
+  };
+
   return (
     <SharedDashboardLayout
       businessName={businessName}
@@ -174,28 +266,50 @@ export default function ProductsPage() {
       onAddProduct={openAddProduct}
     >
       {/* PAGE HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
         <div>
           <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#172033", margin: 0 }}>Products</h2>
           <p style={{ fontSize: "13px", color: "#8791a5", marginTop: "4px", margin: 0 }}>Manage your products and inventory.</p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowAddProduct(true)}
-          style={buttonStyles.primary}
-        >
-          + Add Product
-        </button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => {
+              loadCategories();
+              setManageCategoriesOpen(true);
+            }}
+            style={{
+              height: "44px",
+              padding: "0 16px",
+              borderRadius: "10px",
+              border: "1px solid #CBD5E1",
+              background: "#FFFFFF",
+              color: "#334155",
+              fontWeight: 700,
+              fontSize: "13px",
+              cursor: "pointer",
+            }}
+          >
+            Manage Categories
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAddProduct(true)}
+            style={buttonStyles.primary}
+          >
+            + Add Product
+          </button>
+        </div>
       </div>
 
-      {errorMsg && !showAddProduct && (
+      {errorMsg && !showAddProduct && !manageCategoriesOpen && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-bold mb-4">
           {errorMsg}
         </div>
       )}
 
-      {successMsg && (
+      {successMsg && !showAddProduct && !manageCategoriesOpen && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl text-xs font-bold mb-4">
           {successMsg}
         </div>
@@ -348,14 +462,18 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* ONE SHARED MODAL RENDERED AT END */}
+      {/* ADD/EDIT PRODUCT MODAL */}
       {showAddProduct && (
         <AddProductModal
           onClose={() => {
             setShowAddProduct(false);
             setEditingProduct(null);
           }}
-          onSuccess={loadProducts}
+          onSuccess={() => {
+            loadProducts();
+            setSuccessMsg("Product saved successfully!");
+            setTimeout(() => setSuccessMsg(""), 4000);
+          }}
           initialProduct={editingProduct}
         />
       )}
@@ -363,33 +481,134 @@ export default function ProductsPage() {
       {/* DELETE CONFIRMATION MODAL */}
       {deleteConfirmOpen && productToDelete && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 text-center">
-            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
-              🗑
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="text-lg font-black text-slate-900">Delete this product?</h3>
-              <p className="text-xs text-slate-500">
-                Are you sure you want to delete <strong className="text-slate-800">{productToDelete.name}</strong>? This action cannot be undone.
-              </p>
-            </div>
-
-            <div className="flex gap-3 pt-2">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-xs">
+            <h3 className="text-base font-black text-slate-900">Delete Product</h3>
+            <p className="text-slate-600">
+              Are you sure you want to delete <strong className="text-slate-900">{productToDelete.name}</strong>? This action cannot be undone.
+            </p>
+            {errorMsg && <div className="p-3 bg-rose-50 text-rose-700 rounded-xl font-bold">{errorMsg}</div>}
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setDeleteConfirmOpen(false)}
-                style={buttonStyles.secondary}
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setProductToDelete(null);
+                }}
+                className="px-4 py-2 border rounded-xl font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleDeleteConfirm}
-                style={buttonStyles.delete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-sm cursor-pointer"
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANAGE CATEGORIES MODAL */}
+      {manageCategoriesOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-[calc(100%-24px)] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto text-xs">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="text-base font-black text-slate-900">Manage Categories</h3>
+              <button onClick={() => setManageCategoriesOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">✕</button>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 bg-rose-50 text-rose-700 rounded-xl font-bold">{errorMsg}</div>
+            )}
+            {successMsg && (
+              <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl font-bold">{successMsg}</div>
+            )}
+
+            {/* Add new category form */}
+            <form onSubmit={handleCreateCategory} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">New Category Name *</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter category name..."
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    className="flex-1 h-11 border border-slate-300 rounded-xl px-3 text-xs font-semibold outline-none focus:border-blue-600 bg-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submittingCat}
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <div className="space-y-2 pt-2 border-t">
+              <h4 className="font-bold text-slate-700 uppercase text-[10px] tracking-wider">Existing Categories ({categoriesList.length})</h4>
+              {categoriesList.length === 0 ? (
+                <p className="text-slate-400 text-xs py-4 text-center">No categories created yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {categoriesList.map((cat) => (
+                    <div key={cat.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                      {editingCategory?.id === cat.id ? (
+                        <div className="flex items-center gap-2 flex-1 mr-2">
+                          <input
+                            type="text"
+                            value={editCategoryName}
+                            onChange={(e) => setEditCategoryName(e.target.value)}
+                            className="flex-1 h-9 border border-blue-400 rounded-lg px-2 text-xs font-semibold outline-none bg-white text-slate-900"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveRenameCategory(cat.id)}
+                            className="px-3 py-1.5 bg-emerald-600 text-white font-bold rounded-lg text-[11px] cursor-pointer"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingCategory(null)}
+                            className="px-2.5 py-1.5 bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="font-bold text-slate-900">{cat.name}</span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCategory(cat);
+                                setEditCategoryName(cat.name);
+                              }}
+                              className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded-lg text-[11px] cursor-pointer"
+                            >
+                              Rename
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(cat.id)}
+                              className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold rounded-lg text-[11px] cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -398,81 +617,56 @@ export default function ProductsPage() {
   );
 }
 
+function getStatusStyle(qty: number, min: number) {
+  if (qty <= 0) {
+    return { background: "#FEF2F2", color: "#DC2626" };
+  }
+  if (qty <= min) {
+    return { background: "#FFFBEB", color: "#D97706" };
+  }
+  return { background: "#ECFDF5", color: "#059669" };
+}
+
 const buttonStyles = {
   primary: {
     background: "#2563EB",
     color: "#FFFFFF",
     border: "none",
     borderRadius: "10px",
-    padding: "11px 18px",
-    fontSize: "14px",
+    padding: "0 16px",
+    height: "44px",
     fontWeight: 700,
-    cursor: "pointer",
-    boxShadow: "0 4px 10px rgba(37,99,235,0.20)",
-  },
-
-  secondary: {
-    background: "#EFF6FF",
-    color: "#2563EB",
-    border: "1px solid #BFDBFE",
-    borderRadius: "9px",
-    padding: "8px 14px",
     fontSize: "13px",
-    fontWeight: 700,
     cursor: "pointer",
   },
-
-  edit: {
+  addStock: {
     background: "#EFF6FF",
     color: "#2563EB",
-    border: "1px solid #BFDBFE",
-    borderRadius: "8px",
-    padding: "7px 13px",
-    fontSize: "12px",
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-
-  delete: {
-    background: "#FEF2F2",
-    color: "#DC2626",
-    border: "1px solid #FECACA",
-    borderRadius: "8px",
-    padding: "7px 13px",
-    fontSize: "12px",
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-
-  addStock: {
-    background: "#16A34A",
-    color: "#FFFFFF",
     border: "none",
     borderRadius: "8px",
-    padding: "7px 13px",
-    fontSize: "12px",
+    padding: "6px 10px",
     fontWeight: 700,
+    fontSize: "11px",
     cursor: "pointer",
   },
-};
-
-const getStatusStyle = (stock: number, minimumStock: number) => {
-  if (stock <= 0) {
-    return {
-      background: "#FEF2F2",
-      color: "#DC2626",
-    };
-  }
-
-  if (stock <= minimumStock) {
-    return {
-      background: "#FFF7ED",
-      color: "#EA580C",
-    };
-  }
-
-  return {
-    background: "#F0FDF4",
-    color: "#16A34A",
-  };
+  edit: {
+    background: "#F1F5F9",
+    color: "#475569",
+    border: "none",
+    borderRadius: "8px",
+    padding: "6px 10px",
+    fontWeight: 700,
+    fontSize: "11px",
+    cursor: "pointer",
+  },
+  delete: {
+    background: "#FFF1F2",
+    color: "#E11D48",
+    border: "none",
+    borderRadius: "8px",
+    padding: "6px 10px",
+    fontWeight: 700,
+    fontSize: "11px",
+    cursor: "pointer",
+  },
 };

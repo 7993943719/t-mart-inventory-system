@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 interface AddProductModalProps {
@@ -14,6 +14,11 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
   const [name, setName] = useState(initialProduct?.name || "");
   const [barcode, setBarcode] = useState(initialProduct?.barcode || String(Math.floor(8900000000000 + Math.random() * 999999999)));
   const [category, setCategory] = useState(initialProduct?.category || "Grocery");
+  const [categoryId, setCategoryId] = useState(initialProduct?.category_id || null);
+  const [categoriesList, setCategoriesList] = useState<any[]>([]);
+  const [isAddingNewCat, setIsAddingNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+
   const [purchasePrice, setPurchasePrice] = useState<number>(initialProduct?.purchase_price ?? 100);
   const [sellingPrice, setSellingPrice] = useState<number>(initialProduct?.selling_price ?? 120);
   const [openingStock, setOpeningStock] = useState<number>(initialProduct?.stock_quantity ?? 50);
@@ -22,6 +27,38 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: memberships } = await supabase
+          .from("business_members")
+          .select("business_id")
+          .eq("user_id", user.id);
+        if (memberships && memberships.length > 0) {
+          const bizId = memberships[0].business_id;
+          const { data: cats } = await supabase
+            .from("categories")
+            .select("*")
+            .eq("business_id", bizId)
+            .order("name", { ascending: true });
+          if (cats && cats.length > 0) {
+            setCategoriesList(cats);
+            if (!initialProduct) {
+              const defaultCat = cats.find(c => c.name.toLowerCase() === "grocery") || cats[0];
+              setCategory(defaultCat.name);
+              setCategoryId(defaultCat.id);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error loading categories in modal:", err);
+      }
+    }
+    loadCategories();
+  }, [supabase, initialProduct]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,10 +94,30 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
         throw new Error("No active business workspace found. Please select or join a valid business before adding products.");
       }
 
+      let resolvedCatId = categoryId;
+      const catNameTrim = category.trim();
+      if (!resolvedCatId && catNameTrim) {
+        const matched = categoriesList.find((c) => c.name.toLowerCase() === catNameTrim.toLowerCase());
+        if (matched) {
+          resolvedCatId = matched.id;
+        } else {
+          // Create new category inline
+          const { data: newCat, error: catInsErr } = await supabase
+            .from("categories")
+            .insert([{ business_id: activeBusinessId, name: catNameTrim }])
+            .select()
+            .single();
+          if (!catInsErr && newCat) {
+            resolvedCatId = newCat.id;
+          }
+        }
+      }
+
       const payload = {
         name: name.trim(),
         barcode: barcode.trim(),
-        category: category.trim(),
+        category: catNameTrim || "General",
+        category_id: resolvedCatId,
         purchase_price: Number(purchasePrice) || 0,
         selling_price: Number(sellingPrice) || 0,
         mrp: Number(sellingPrice) || 0,
@@ -218,17 +275,37 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
                 <div>
                   <label style={labelStyle}>Category</label>
                   <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
+                    value={isAddingNewCat ? "__NEW__" : category}
+                    onChange={(e) => {
+                      if (e.target.value === "__NEW__") {
+                        setIsAddingNewCat(true);
+                        setCategory("");
+                        setCategoryId(null);
+                      } else {
+                        setIsAddingNewCat(false);
+                        const found = categoriesList.find(c => c.name === e.target.value);
+                        setCategory(e.target.value);
+                        setCategoryId(found ? found.id : null);
+                      }
+                    }}
                     style={inputStyle}
                   >
-                    <option value="Grocery">Grocery</option>
-                    <option value="Beverages">Beverages</option>
-                    <option value="Snacks">Snacks</option>
-                    <option value="Personal Care">Personal Care</option>
-                    <option value="Household">Household</option>
-                    <option value="General">General</option>
+                    {categoriesList.map((c) => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                    <option value="__NEW__">+ Add New Category...</option>
                   </select>
+
+                  {isAddingNewCat && (
+                    <input
+                      type="text"
+                      required
+                      placeholder="Enter new category name..."
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      style={{ ...inputStyle, marginTop: "8px" }}
+                    />
+                  )}
                 </div>
               </div>
             </div>
