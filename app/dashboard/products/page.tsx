@@ -38,6 +38,8 @@ export default function ProductsPage() {
   const [userName, setUserName] = useState("Admin");
   const [role, setRole] = useState("OWNER");
 
+  const isOwnerOrAdmin = ["OWNER", "ADMIN"].includes((role || "").toUpperCase().trim());
+
   const loadCategories = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -72,11 +74,14 @@ export default function ProductsPage() {
         .select("*, businesses(*)")
         .eq("user_id", user.id);
 
+      let bizId = memberships[0]?.business_id || user.id;
       if (memberships && memberships.length > 0) {
-        const biz = memberships[0].businesses;
+        const mem = memberships[0];
+        const biz = mem.businesses;
         setBusinessName(biz?.name || "Perikapally");
-        setRole(memberships[0].role || "OWNER");
-        setBusinessId(memberships[0].business_id);
+        setRole(mem.role || "OWNER");
+        bizId = mem.business_id;
+        setBusinessId(bizId);
       }
 
       const { data: prof } = await supabase
@@ -87,16 +92,15 @@ export default function ProductsPage() {
 
       if (prof?.full_name) setUserName(prof.full_name);
 
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .order("name", { ascending: true });
+      const { data, error } = await supabase.rpc("get_business_products", {
+        p_business_id: bizId,
+      });
 
       if (error) {
-        console.error("Error fetching products:", error);
+        console.error("Error fetching products via RPC:", error);
         setErrorMsg(error.message);
       } else {
-        setProducts(data || []);
+        setProducts((data || []) as unknown as Product[]);
       }
 
       await loadCategories();
@@ -393,7 +397,7 @@ export default function ProductsPage() {
                   <th className="p-4">Product</th>
                   <th className="p-4">SKU</th>
                   <th className="p-4">Category</th>
-                  <th className="p-4">Purchase Price</th>
+                  {isOwnerOrAdmin && <th className="p-4">Purchase Price</th>}
                   <th className="p-4">Selling Price</th>
                   <th className="p-4">Stock</th>
                   <th className="p-4">Status</th>
@@ -410,7 +414,7 @@ export default function ProductsPage() {
                       <td className="p-4 font-bold text-slate-900">{p.name}</td>
                       <td className="p-4 font-mono text-[11px] text-slate-500">{p.barcode}</td>
                       <td className="p-4">{p.category}</td>
-                      <td className="p-4 text-slate-600">₹{p.purchase_price}</td>
+                      {isOwnerOrAdmin && <td className="p-4 text-slate-600">₹{p.purchase_price}</td>}
                       <td className="p-4 font-bold text-emerald-600">₹{p.selling_price}</td>
                       <td className="p-4 font-black">{qty} {p.unit}</td>
                       <td className="p-4">
@@ -655,7 +659,7 @@ const buttonStyles = {
     border: "none",
     borderRadius: "8px",
     padding: "6px 10px",
-    fontWeight: 700,
+    fontWeight: "700",
     fontSize: "11px",
     cursor: "pointer",
   },

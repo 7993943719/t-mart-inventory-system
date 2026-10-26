@@ -195,6 +195,7 @@ export default function StockPage() {
   const [businessName, setBusinessName] = useState("Perikapally");
   const [userName, setUserName] = useState("Admin");
   const [role, setRole] = useState("OWNER");
+  const isOwnerOrAdmin = ["OWNER", "ADMIN"].includes((role || "").toUpperCase().trim());
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -210,16 +211,18 @@ export default function StockPage() {
         .select("*, businesses(*)")
         .eq("user_id", user.id);
 
+      let activeBizId = user.id;
       if (memberships && memberships.length > 0) {
         const biz = memberships[0].businesses;
         setBusiness(biz);
         setRole(memberships[0].role || "OWNER");
         setBusinessName(biz?.name || "Perikapally");
+        activeBizId = biz?.id || user.id;
 
         const { data: suppData } = await supabase
           .from("suppliers")
           .select("*")
-          .eq("business_id", biz.id)
+          .eq("business_id", activeBizId)
           .order("name", { ascending: true });
         setSuppliersList(suppData || []);
       }
@@ -233,8 +236,8 @@ export default function StockPage() {
       if (prof?.full_name) setUserName(prof.full_name);
 
       const [prodsRes, movementsRes] = await Promise.all([
-        supabase.from("products").select("*").order("name", { ascending: true }),
-        supabase.from("stock_movements").select("*").order("created_at", { ascending: false }).limit(100),
+        supabase.rpc("get_business_products", { p_business_id: activeBizId }),
+        supabase.from("stock_movements").select("*").eq("business_id", activeBizId).order("created_at", { ascending: false }).limit(100),
       ]);
 
       setProducts(prodsRes.data || []);
@@ -633,7 +636,7 @@ export default function StockPage() {
         p_supplier: supplier.trim() || null,
         p_reference: reference.trim() || null,
         p_notes: "Manual Stock Addition",
-        p_purchase_price: priceNum,
+        p_purchase_price: isOwnerOrAdmin ? priceNum : null,
         p_movement_date: new Date().toISOString().split("T")[0],
       });
 
@@ -1402,7 +1405,7 @@ export default function StockPage() {
                           p_supplier: supplierName || null,
                           p_reference: invoiceNo || null,
                           p_notes: "AI Photo Scan Stock Addition",
-                          p_purchase_price: Number(scannedProduct.purchase_price || 0),
+                          p_purchase_price: isOwnerOrAdmin ? Number(scannedProduct.purchase_price || 0) : null,
                           p_movement_date: new Date().toISOString().split("T")[0],
                         });
 

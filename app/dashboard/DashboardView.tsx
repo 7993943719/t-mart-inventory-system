@@ -103,18 +103,14 @@ export default function DashboardView({
         setAllSaleItems([]);
       }
 
-      // 3. Fetch Products
-      const { data: prodsData, error: prodErr } = await supabase
-        .from("products")
-        .select("*")
-        .order("name", { ascending: true });
+      // 3. Fetch Products via secure RPC
+      const { data: prodsData, error: prodErr } = await supabase.rpc("get_business_products", {
+        p_business_id: businessId,
+      });
 
       if (prodErr) throw prodErr;
 
-      const filteredProds = (prodsData || []).filter((p) => {
-        if (!businessId) return true;
-        return p.business_id === businessId || p.tenant_id === businessId;
-      });
+      const filteredProds = (prodsData || []) as any[];
       setAllProducts(filteredProds);
       setTotalProducts(filteredProds.length);
 
@@ -307,7 +303,7 @@ export default function DashboardView({
           </button>
 
           <button
-            onClick={() => go("/dashboard/purchases")}
+            onClick={() => go("/dashboard/stock")}
             className="p-4 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-2xl shadow-md shadow-purple-600/20 hover:scale-[1.02] transition flex flex-col items-center justify-center text-center gap-1.5 cursor-pointer min-h-[88px]"
           >
             <FileText className="w-5 h-5 text-white" />

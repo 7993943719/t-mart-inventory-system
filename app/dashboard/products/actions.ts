@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { enforceModulePermission } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 
@@ -29,6 +30,83 @@ export async function deleteProductAction(input: {
   return { success: true, message: "Product deleted successfully." };
 }
 
+export async function saveProductAction(input: {
+  id?: string;
+  businessId: string;
+  name: string;
+  barcode: string;
+  category: string;
+  categoryId?: string | null;
+  purchasePrice?: number;
+  sellingPrice: number;
+  mrp?: number;
+  stockQuantity?: number;
+  minimumStock?: number;
+  unit: string;
+}) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Please log in again.");
+  }
+
+  await enforceModulePermission(supabase, user.id, input.businessId, "inventory");
+
+  // Check if caller is Owner or Admin for purchase_price write authority
+  const { data: member } = await supabase
+    .from("business_members")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("business_id", input.businessId)
+    .maybeSingle();
+
+  const role = (member?.role || "").toLowerCase();
+  const isOwnerOrAdmin = role === "owner" || role === "admin";
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const client = (isOwnerOrAdmin && serviceRoleKey && supabaseUrl)
+    ? createAdminClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
+    : supabase;
+
+  const payload: any = {
+    name: input.name.trim(),
+    barcode: input.barcode.trim(),
+    category: input.category.trim(),
+    category_id: input.categoryId || null,
+    selling_price: Number(input.sellingPrice) || 0,
+    mrp: Number(input.mrp || input.sellingPrice) || 0,
+    stock_quantity: Number(input.stockQuantity) || 0,
+    minimum_stock: Number(input.minimumStock) || 10,
+    unit: input.unit.trim(),
+    business_id: input.businessId,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Include purchase_price only when caller is verified Owner or Admin
+  if (isOwnerOrAdmin && input.purchasePrice !== undefined) {
+    payload.purchase_price = Number(input.purchasePrice) || 0;
+  }
+
+  if (input.id) {
+    const { error } = await client
+      .from("products")
+      .update(payload)
+      .eq("id", input.id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await client
+      .from("products")
+      .insert([{ ...payload, created_at: new Date().toISOString() }]);
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard/products");
+  return { success: true, message: "Product saved successfully." };
+}
+
 export async function createCategoryAction(input: {
   businessId: string;
   name: string;
@@ -48,12 +126,19 @@ export async function createCategoryAction(input: {
   }
 
   // Check case-insensitive duplicate within business
-  const { data: existing } = await supabase
+  const { data: existing, error: checkErr } = await supabase
     .from("categories")
     .select("id")
     .eq("business_id", input.businessId)
     .ilike("name", name)
     .maybeSingle();
+
+  if (checkErr) {
+    if (checkErr.code === "42P01" || checkErr.message?.includes("does not exist")) {
+      throw new Error("Categories table is not yet set up in database. Please apply Migration 025.");
+    }
+    throw new Error(checkErr.message);
+  }
 
   if (existing) {
     throw new Error(`Category "${name}" already exists.`);
@@ -65,7 +150,12 @@ export async function createCategoryAction(input: {
     .select()
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "42P01" || error.message?.includes("does not exist")) {
+      throw new Error("Categories table is not yet set up in database. Please apply Migration 025.");
+    }
+    throw new Error(error.message);
+  }
 
   revalidatePath("/dashboard/products");
   return { success: true, message: "Category created successfully.", category: data };
@@ -90,13 +180,20 @@ export async function updateCategoryAction(input: {
     throw new Error("Category name is required.");
   }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: checkErr } = await supabase
     .from("categories")
     .select("id")
     .eq("business_id", input.businessId)
     .ilike("name", name)
     .neq("id", input.categoryId)
     .maybeSingle();
+
+  if (checkErr) {
+    if (checkErr.code === "42P01" || checkErr.message?.includes("does not exist")) {
+      throw new Error("Categories table is not yet set up in database. Please apply Migration 025.");
+    }
+    throw new Error(checkErr.message);
+  }
 
   if (existing) {
     throw new Error(`Category "${name}" already exists.`);
@@ -114,7 +211,12 @@ export async function updateCategoryAction(input: {
     .eq("id", input.categoryId)
     .eq("business_id", input.businessId);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "42P01" || error.message?.includes("does not exist")) {
+      throw new Error("Categories table is not yet set up in database. Please apply Migration 025.");
+    }
+    throw new Error(error.message);
+  }
 
   if (oldCat?.name) {
     await supabase
@@ -157,7 +259,12 @@ export async function deleteCategoryAction(input: {
     .eq("id", input.categoryId)
     .eq("business_id", input.businessId);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "42P01" || error.message?.includes("does not exist")) {
+      throw new Error("Categories table is not yet set up in database. Please apply Migration 025.");
+    }
+    throw new Error(error.message);
+  }
 
   revalidatePath("/dashboard/products");
   return { success: true, message: "Category deleted successfully." };

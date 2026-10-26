@@ -110,9 +110,20 @@ export default function PurchasesPage() {
         .select("*, businesses(*)")
         .eq("user_id", user.id);
 
+      let canView = false;
       if (memberships && memberships.length > 0) {
-        setBusiness(memberships[0].businesses);
-        setRole(memberships[0].role || "OWNER");
+        const mem = memberships[0];
+        setBusiness(mem.businesses);
+        setRole(mem.role || "OWNER");
+        const r = (mem.role || "").toLowerCase();
+        const perms = mem.permissions;
+        canView = r === "owner" || r === "admin" || (Array.isArray(perms) && (perms.includes("financials") || perms.includes("cost_view")));
+      }
+
+      if (!canView) {
+        setErrorMsg("Access Denied: Vendor purchase bills and costs require Owner or Admin authorization.");
+        setLoading(false);
+        return;
       }
 
       const { data: prof } = await supabase

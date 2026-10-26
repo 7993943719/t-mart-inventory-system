@@ -12,6 +12,12 @@ export const ALLOWED_MODULES = [
 
 export type AppModule = typeof ALLOWED_MODULES[number];
 
+export function canViewFinancials(role: string, permissions: any): boolean {
+  const r = (role || "").toLowerCase();
+  // Strict requirement: ONLY Owner and Admin roles can view financials (purchase prices, costs, profits, margins, reports)
+  return r === "owner" || r === "admin";
+}
+
 export async function hasModulePermission(
   supabase: any,
   userId: string,

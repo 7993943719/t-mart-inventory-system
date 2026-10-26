@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { saveProductAction } from "@/app/dashboard/products/actions";
 
 interface AddProductModalProps {
   onClose: () => void;
@@ -113,36 +114,25 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
         }
       }
 
-      const payload = {
+      const res = await saveProductAction({
+        id: initialProduct?.id,
+        businessId: activeBusinessId,
         name: name.trim(),
         barcode: barcode.trim(),
         category: catNameTrim || "General",
-        category_id: resolvedCatId,
-        purchase_price: Number(purchasePrice) || 0,
-        selling_price: Number(sellingPrice) || 0,
+        categoryId: resolvedCatId,
+        purchasePrice: Number(purchasePrice) || 0,
+        sellingPrice: Number(sellingPrice) || 0,
         mrp: Number(sellingPrice) || 0,
-        stock_quantity: Number(openingStock) || 0,
-        minimum_stock: Number(minimumStock) || 10,
+        stockQuantity: Number(openingStock) || 0,
+        minimumStock: Number(minimumStock) || 10,
         unit: unit.trim(),
-        business_id: activeBusinessId,
-        updated_at: new Date().toISOString(),
-      };
+      });
 
-      if (initialProduct?.id) {
-        const { error } = await supabase
-          .from("products")
-          .update(payload)
-          .eq("id", initialProduct.id);
-        if (error) throw new Error(error.message);
-      } else {
-        const { error } = await supabase
-          .from("products")
-          .insert([{ ...payload, created_at: new Date().toISOString() }]);
-        if (error) throw new Error(error.message);
+      if (res && res.success) {
+        if (onSuccess) onSuccess();
+        onClose();
       }
-
-      if (onSuccess) onSuccess();
-      onClose();
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to save product");
     } finally {

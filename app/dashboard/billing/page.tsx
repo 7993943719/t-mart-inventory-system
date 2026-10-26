@@ -175,10 +175,12 @@ export default function BillingPage() {
         .select("*, businesses(*)")
         .eq("user_id", user.id);
 
+      let activeBizId = user.id;
       if (memberships && memberships.length > 0) {
         const biz = memberships[0].businesses;
         setBusiness(biz);
         setRole(memberships[0].role || "OWNER");
+        activeBizId = biz?.id || user.id;
         if (biz?.gst_number) {
           setGstEnabled(true);
         }
@@ -195,9 +197,9 @@ export default function BillingPage() {
       }
 
       const [prodsRes, salesRes, custRes] = await Promise.all([
-        supabase.from("products").select("*").order("name", { ascending: true }),
-        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(300),
-        supabase.from("customers").select("*").order("name", { ascending: true }),
+        supabase.rpc("get_business_products", { p_business_id: activeBizId }),
+        supabase.from("sales").select("*").eq("business_id", activeBizId).order("created_at", { ascending: false }).limit(300),
+        supabase.from("customers").select("*").eq("business_id", activeBizId).order("name", { ascending: true }),
       ]);
 
       setProducts(prodsRes.data || []);

@@ -89,13 +89,24 @@ export default function ReportsPage() {
         .select("*, businesses(*)")
         .eq("user_id", user.id);
 
+      let canView = false;
       let activeBizId = user.id;
       if (memberships && memberships.length > 0) {
-        setBusiness(memberships[0].businesses);
-        setRole(memberships[0].role || "OWNER");
-        activeBizId = memberships[0].businesses?.id || user.id;
+        const mem = memberships[0];
+        setBusiness(mem.businesses);
+        setRole(mem.role || "OWNER");
+        activeBizId = mem.businesses?.id || user.id;
+        const r = (mem.role || "").toLowerCase();
+        const perms = mem.permissions;
+        canView = r === "owner" || r === "admin" || (Array.isArray(perms) && (perms.includes("financials") || perms.includes("cost_view")));
       }
       setBusinessId(activeBizId);
+
+      if (!canView) {
+        setErrorMessage("Access Denied: Financial and profit reports require Owner or Admin authorization.");
+        setLoading(false);
+        return;
+      }
 
       const { data: prof } = await supabase
         .from("profiles")
