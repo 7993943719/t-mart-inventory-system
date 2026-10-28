@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   Users,
   Boxes,
+  CalendarClock,
   UserCheck,
   Truck,
   Share2,
@@ -35,6 +36,7 @@ export function Sidebar({ businessName, userName, role }: Props) {
     { label: "Customers", icon: UserCheck, href: "/dashboard/customers", color: "text-emerald-400" },
     { label: "Vendors", icon: Truck, href: "/dashboard/purchases", color: "text-orange-400" },
     { label: "Stock", icon: Boxes, href: "/dashboard/stock", color: "text-teal-400" },
+    { label: "Expiry", icon: CalendarClock, href: "/dashboard/expiry", color: "text-amber-400" },
     { label: "Staff", icon: Users, href: "/dashboard/staff", color: "text-amber-400" },
   ];
 

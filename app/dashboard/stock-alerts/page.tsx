@@ -1,1 +1,5 @@
-export default function Stub() { return null; }
+import { redirect } from "next/navigation";
+
+export default function StockAlertsRedirect() {
+  redirect("/dashboard/stock");
+}

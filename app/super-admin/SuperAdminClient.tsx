@@ -379,10 +379,6 @@ export default function SuperAdminClient({
   const activeSubsCount = subscriptions.filter((s) => s.status === "active").length;
   const totalPlatformUsers = authUsers.length > 0 ? authUsers.length : profiles.length;
 
-  if (!isMounted) {
-    return <div className="min-h-screen bg-slate-950 text-slate-400 flex items-center justify-center text-xs">Loading Super Owner Panel...</div>;
-  }
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
       {/* TOP HEADER */}

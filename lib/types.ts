@@ -15,6 +15,7 @@ export interface Product {
   mrp: number;
   stock_quantity: number;
   minimum_stock: number;
+  track_expiry?: boolean;
   image_url?: string | null;
   created_at?: string;
   updated_at?: string;

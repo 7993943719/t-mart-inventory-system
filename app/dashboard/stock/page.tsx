@@ -28,6 +28,7 @@ import {
   Eye,
   Sliders,
   History,
+  CalendarClock,
   Info,
   Truck,
   DollarSign,
@@ -181,6 +182,9 @@ export default function StockPage() {
   const [purchasePrice, setPurchasePrice] = useState<number | string>(100);
   const [supplier, setSupplier] = useState("");
   const [reference, setReference] = useState("");
+  const [manualBatchNumber, setManualBatchNumber] = useState("");
+  const [manualManufactureDate, setManualManufactureDate] = useState("");
+  const [manualExpiryDate, setManualExpiryDate] = useState("");
 
   // Product View Detail Modal
   const [viewProductModalOpen, setViewProductModalOpen] = useState(false);
@@ -398,9 +402,10 @@ export default function StockPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated.");
 
+      const bizId = business?.id || user.id;
       const fileExt = capturedFile.name.split(".").pop() || "jpg";
       const fileName = `bill_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
+      const filePath = `${bizId}/${fileName}`;
 
       const { error: uploadErr } = await supabase.storage
         .from("purchase-bills")
@@ -596,6 +601,9 @@ export default function StockPage() {
       setPurchasePrice(Number(products[0].purchase_price || 100));
       setSupplier("");
       setReference("");
+      setManualBatchNumber("");
+      setManualManufactureDate("");
+      setManualExpiryDate("");
       setAddStockModalOpen(true);
     } else {
       setAddProductModalOpen(true);
@@ -619,6 +627,11 @@ export default function StockPage() {
       return;
     }
 
+    if (Boolean(selectedProduct.track_expiry) && !manualExpiryDate) {
+      setErrorMsg("Expiry date is required for this product. Enter batch details before adding stock.");
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -638,6 +651,9 @@ export default function StockPage() {
         p_notes: "Manual Stock Addition",
         p_purchase_price: isOwnerOrAdmin ? priceNum : null,
         p_movement_date: new Date().toISOString().split("T")[0],
+        p_batch_number: manualBatchNumber.trim() || null,
+        p_expiry_date: manualExpiryDate || null,
+        p_manufacture_date: manualManufactureDate || null,
       });
 
       if (error) {
@@ -655,6 +671,9 @@ export default function StockPage() {
       setAddQty(10);
       setSupplier("");
       setReference("");
+      setManualBatchNumber("");
+      setManualManufactureDate("");
+      setManualExpiryDate("");
       await loadData();
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err: any) {
@@ -1692,6 +1711,49 @@ export default function StockPage() {
                   className="w-full h-11 bg-slate-50 border border-slate-200 rounded-xl px-3 font-semibold text-slate-900 outline-none focus:border-blue-600"
                 />
               </div>
+
+              {Boolean(selectedProduct.track_expiry) && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
+                  <div className="text-[11px] font-extrabold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                    <CalendarClock className="w-4 h-4 text-amber-700" />
+                    <span>Expiry Tracking Enabled — Enter Batch Details</span>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Batch Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. LOT-2026-08"
+                      value={manualBatchNumber}
+                      onChange={(e) => setManualBatchNumber(e.target.value)}
+                      className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs outline-none focus:border-amber-600"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Mfg Date (Opt)</label>
+                      <input
+                        type="date"
+                        value={manualManufactureDate}
+                        onChange={(e) => setManualManufactureDate(e.target.value)}
+                        className="w-full h-10 bg-white border border-slate-200 rounded-xl px-3 text-xs outline-none focus:border-amber-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Expiry Date *</label>
+                      <input
+                        type="date"
+                        required
+                        min={new Date().toISOString().split("T")[0]}
+                        value={manualExpiryDate}
+                        onChange={(e) => setManualExpiryDate(e.target.value)}
+                        className="w-full h-10 bg-white border border-amber-300 rounded-xl px-3 text-xs font-bold text-amber-900 outline-none focus:border-amber-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-blue-50 p-3.5 rounded-2xl border border-blue-200 flex justify-between items-center font-bold text-blue-900">
                 <span>New Stock Level:</span>

@@ -39,9 +39,19 @@ export default function ProductsPage() {
   const [role, setRole] = useState("OWNER");
 
   const isOwnerOrAdmin = ["OWNER", "ADMIN"].includes((role || "").toUpperCase().trim());
+  const isDemoMode = process.env.NEXT_PUBLIC_TWEB_DEMO_MODE === "true";
 
   const loadCategories = async () => {
     try {
+      if (isDemoMode) {
+        setCategoriesList([
+          { id: "c1", name: "Grocery" },
+          { id: "c2", name: "Dairy" },
+          { id: "c3", name: "Bakery" },
+          { id: "c4", name: "Grains" },
+        ]);
+        return;
+      }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data: memberships } = await supabase
@@ -65,7 +75,24 @@ export default function ProductsPage() {
 
   const loadProducts = async () => {
     setLoading(true);
+    setErrorMsg("");
     try {
+      if (isDemoMode) {
+        setBusinessName("TWEB Demo Supermarket");
+        setRole("OWNER");
+        setBusinessId("demo-biz-1");
+        setUserName("Demo Admin");
+        setProducts([
+          { id: "p1", business_id: "demo-biz-1", name: "Organic Whole Milk 1L", barcode: "8901234567890", category: "Dairy", unit: "Bottle", stock_quantity: 45, minimum_stock: 10, purchase_price: 50, selling_price: 65, mrp: 65, track_expiry: true },
+          { id: "p2", business_id: "demo-biz-1", name: "Fresh Whole Wheat Bread", barcode: "8901234567891", category: "Bakery", unit: "Loaf", stock_quantity: 12, minimum_stock: 5, purchase_price: 30, selling_price: 40, mrp: 40, track_expiry: true },
+          { id: "p3", business_id: "demo-biz-1", name: "Basmati Rice 5kg", barcode: "8901234567892", category: "Grains", unit: "Bag", stock_quantity: 100, minimum_stock: 15, purchase_price: 350, selling_price: 450, mrp: 450, track_expiry: false },
+          { id: "p4", business_id: "demo-biz-1", name: "Greek Yogurt 400g", barcode: "8901234567893", category: "Dairy", unit: "Cup", stock_quantity: 8, minimum_stock: 10, purchase_price: 80, selling_price: 110, mrp: 110, track_expiry: true },
+        ]);
+        await loadCategories();
+        setLoading(false);
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -97,16 +124,23 @@ export default function ProductsPage() {
       });
 
       if (error) {
-        console.error("Error fetching products via RPC:", error);
-        setErrorMsg(error.message);
+        const detailed = `RPC Error [${error.code || "PGRST"}]: ${error.message || "Unknown error"}${error.details ? ` (${error.details})` : ""}${error.hint ? ` [Hint: ${error.hint}]` : ""}`;
+        console.error("Error fetching products via RPC:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        setErrorMsg(detailed);
       } else {
         setProducts((data || []) as unknown as Product[]);
       }
 
       await loadCategories();
     } catch (err: any) {
+      const detailed = err?.message || err?.code ? `Error [${err.code || "ERR"}]: ${err.message}` : "Failed to load products";
       console.error("Failed to load products", err);
-      setErrorMsg(err.message || "Failed to load products");
+      setErrorMsg(detailed);
     } finally {
       setLoading(false);
     }
@@ -158,6 +192,15 @@ export default function ProductsPage() {
 
   const handleDeleteConfirm = async () => {
     if (!productToDelete) return;
+    if (isDemoMode) {
+      setProducts(products.filter(p => p.id !== productToDelete.id));
+      setSuccessMsg("Product deleted successfully (Demo Mode).");
+      setDeleteConfirmOpen(false);
+      setProductToDelete(null);
+      setTimeout(() => setSuccessMsg(""), 4000);
+      return;
+    }
+
     setLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -269,6 +312,13 @@ export default function ProductsPage() {
       pageTitle="Products"
       onAddProduct={openAddProduct}
     >
+      {isDemoMode && (
+        <div style={{ padding: "12px 16px", background: "#FEF3C7", border: "1px solid #FCD34D", color: "#92400E", borderRadius: "12px", fontSize: "12px", fontWeight: 800, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>⚠️</span>
+          <span>DEMO MODE — NO DATABASE CHANGES (NEXT_PUBLIC_TWEB_DEMO_MODE=true)</span>
+        </div>
+      )}
+
       {/* PAGE HEADER */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
         <div>

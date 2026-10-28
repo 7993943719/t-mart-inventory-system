@@ -10,6 +10,28 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  // Check if authenticated user is Super Owner via database-backed public.is_super_admin RPC or super_admins table
+  const { data: isSuper } = await supabase.rpc("is_super_admin", {
+    p_user_id: user.id,
+  });
+
+  let isSuperOwner = Boolean(isSuper);
+  if (!isSuperOwner) {
+    const { data: superRecord } = await supabase
+      .from("super_admins")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (superRecord) {
+      isSuperOwner = true;
+    }
+  }
+
+  if (isSuperOwner) {
+    redirect("/super-admin");
+  }
+
   const { data: memberships, error: memberError } = await supabase
     .from("business_members")
     .select("*, businesses(*)")

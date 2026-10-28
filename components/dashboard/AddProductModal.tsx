@@ -26,6 +26,11 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
   const [minimumStock, setMinimumStock] = useState<number>(initialProduct?.minimum_stock ?? 10);
   const [unit, setUnit] = useState(initialProduct?.unit || "Piece");
 
+  // Expiry & Batch Tracking State
+  const [trackExpiry, setTrackExpiry] = useState<boolean>(Boolean(initialProduct?.track_expiry));
+  const [openingBatchNumber, setOpeningBatchNumber] = useState("");
+  const [openingExpiryDate, setOpeningExpiryDate] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -38,6 +43,7 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
           .from("business_members")
           .select("business_id")
           .eq("user_id", user.id);
+
         if (memberships && memberships.length > 0) {
           const bizId = memberships[0].business_id;
           const { data: cats } = await supabase
@@ -65,6 +71,11 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
     e.preventDefault();
     if (!name || !barcode) {
       setErrorMsg("Product name and SKU/barcode are required.");
+      return;
+    }
+
+    if (trackExpiry && openingStock > 0 && (!openingBatchNumber.trim() || !openingExpiryDate)) {
+      setErrorMsg("Batch number and expiry date are required when enabling expiry tracking for existing stock.");
       return;
     }
 
@@ -127,6 +138,9 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
         stockQuantity: Number(openingStock) || 0,
         minimumStock: Number(minimumStock) || 10,
         unit: unit.trim(),
+        trackExpiry: Boolean(trackExpiry),
+        openingBatchNumber: openingBatchNumber.trim(),
+        openingExpiryDate: openingExpiryDate,
       });
 
       if (res && res.success) {
@@ -398,6 +412,70 @@ export function AddProductModal({ onClose, onSuccess, initialProduct }: AddProdu
                   <option value="Dozen">Dozen</option>
                 </select>
               </div>
+            </div>
+
+            {/* EXPIRY TRACKING & BATCHES */}
+            <div style={{
+              background: "#FFFBEB",
+              border: "1px solid #FDE68A",
+              borderRadius: "14px",
+              padding: "16px",
+              marginTop: "16px",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <h3 style={{ fontSize: "13px", color: "#D97706", margin: 0, fontWeight: 800, textTransform: "uppercase" }}>
+                  Expiry & Batch Tracking
+                </h3>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "12px", fontWeight: 700, color: "#92400E" }}>
+                  <input
+                    type="checkbox"
+                    checked={trackExpiry}
+                    onChange={(e) => setTrackExpiry(e.target.checked)}
+                    style={{ width: "16px", height: "16px" }}
+                  />
+                  Enable Expiry Tracking
+                </label>
+              </div>
+
+              <p style={{ fontSize: "11px", color: "#78350F", margin: "0 0 12px 0" }}>
+                Enables First-Expired, First-Out (FEFO) batch inventory allocation at checkout and expiry alert tracking.
+              </p>
+
+              {trackExpiry && (
+                <div style={{ display: "grid", gap: "12px", paddingTop: "8px", borderTop: "1px border-dashed #FCD34D" }}>
+                  {openingStock > 0 && (
+                    <div style={{ padding: "8px 12px", background: "#FEF3C7", borderRadius: "8px", fontSize: "11px", color: "#92400E", fontWeight: 600 }}>
+                      ⚠️ <strong>Opening Stock Assignment:</strong> Please specify batch number and expiry date to assign your opening stock ({openingStock} {unit}) to an initial batch.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label style={labelStyle}>Batch Number *</label>
+                      <input
+                        type="text"
+                        required={trackExpiry && openingStock > 0}
+                        placeholder="e.g. BATCH-2025-01"
+                        value={openingBatchNumber}
+                        onChange={(e) => setOpeningBatchNumber(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Expiry Date *</label>
+                      <input
+                        type="date"
+                        required={trackExpiry && openingStock > 0}
+                        min={new Date().toISOString().split("T")[0]}
+                        value={openingExpiryDate}
+                        onChange={(e) => setOpeningExpiryDate(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

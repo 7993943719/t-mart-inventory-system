@@ -43,6 +43,9 @@ export async function saveProductAction(input: {
   stockQuantity?: number;
   minimumStock?: number;
   unit: string;
+  trackExpiry?: boolean;
+  openingBatchNumber?: string;
+  openingExpiryDate?: string;
 }) {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -82,6 +85,7 @@ export async function saveProductAction(input: {
     minimum_stock: Number(input.minimumStock) || 10,
     unit: input.unit.trim(),
     business_id: input.businessId,
+    track_expiry: Boolean(input.trackExpiry),
     updated_at: new Date().toISOString(),
   };
 
@@ -90,6 +94,8 @@ export async function saveProductAction(input: {
     payload.purchase_price = Number(input.purchasePrice) || 0;
   }
 
+  let savedProductId = input.id;
+
   if (input.id) {
     const { error } = await client
       .from("products")
@@ -97,10 +103,28 @@ export async function saveProductAction(input: {
       .eq("id", input.id);
     if (error) throw new Error(error.message);
   } else {
-    const { error } = await client
+    const { data: newProd, error } = await client
       .from("products")
-      .insert([{ ...payload, created_at: new Date().toISOString() }]);
+      .insert([{ ...payload, created_at: new Date().toISOString() }])
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
+    if (newProd) savedProductId = newProd.id;
+  }
+
+  // If trackExpiry is enabled and opening batch details provided, create opening stock batch
+  if (Boolean(input.trackExpiry) && savedProductId && input.openingBatchNumber && input.openingExpiryDate) {
+    try {
+      await supabase.rpc("create_opening_stock_batch", {
+        p_business_id: input.businessId,
+        p_product_id: savedProductId,
+        p_batch_number: input.openingBatchNumber.trim(),
+        p_expiry_date: input.openingExpiryDate,
+        p_quantity: Number(input.stockQuantity) || 0,
+      });
+    } catch (batchErr) {
+      console.error("Error creating opening stock batch:", batchErr);
+    }
   }
 
   revalidatePath("/dashboard/products");

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
@@ -70,17 +71,22 @@ export default async function SuperAdminPage() {
     }
 
     return (
-      <SuperAdminClient
-        adminEmail={adminEmail}
-        initialBusinesses={bizRes.data || []}
-        initialSubscriptions={subRes.data || []}
-        initialMembers={membersRes.data || []}
-        initialProfiles={profRes.data || []}
-        initialSuperAdmins={superAdminsRes.data || []}
-        initialAuthUsers={allAuthUsers}
-      />
+      <Suspense fallback={<div className="min-h-screen bg-slate-950 text-slate-400 flex items-center justify-center text-xs font-bold">Loading Super Owner Panel...</div>}>
+        <SuperAdminClient
+          adminEmail={adminEmail}
+          initialBusinesses={bizRes.data || []}
+          initialSubscriptions={subRes.data || []}
+          initialMembers={membersRes.data || []}
+          initialProfiles={profRes.data || []}
+          initialSuperAdmins={superAdminsRes.data || []}
+          initialAuthUsers={allAuthUsers}
+        />
+      </Suspense>
     );
   } catch (err: any) {
+    if (err?.digest?.startsWith("NEXT_REDIRECT") || err?.message === "NEXT_REDIRECT") {
+      throw err;
+    }
     console.error("SuperAdminPage error:", err);
     redirect(`/super-admin/login?error=${encodeURIComponent(err.message || "Super owner panel session error.")}`);
   }

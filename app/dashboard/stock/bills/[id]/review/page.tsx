@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Loader2, AlertTriangle, Package, DollarSign, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, AlertTriangle, Package, DollarSign, ShieldCheck, CalendarClock } from "lucide-react";
 
 export default function BillReviewPage() {
   const params = useParams();
@@ -23,6 +23,12 @@ export default function BillReviewPage() {
 
   // Map of product_id -> new selling price string
   const [sellingPrices, setSellingPrices] = useState<{ [productId: string]: string }>({});
+
+  // Expiry & Batch tracking states per product ID
+  const [productFlags, setProductFlags] = useState<{ [productId: string]: { track_expiry: boolean; name: string } }>({});
+  const [batchNumbers, setBatchNumbers] = useState<{ [productId: string]: string }>({});
+  const [manufactureDates, setManufactureDates] = useState<{ [productId: string]: string }>({});
+  const [expiryDates, setExpiryDates] = useState<{ [productId: string]: string }>({});
 
   const fetchBillData = async () => {
     setLoading(true);
@@ -49,21 +55,27 @@ export default function BillReviewPage() {
       if (billErr) throw billErr;
       setBill(billData);
 
-      // Initialize selling prices state from bill items or product catalog
+      // Initialize selling prices and expiry flags state from bill items
       if (billData && billData.items) {
         const initialPrices: { [key: string]: string } = {};
+        const initialFlags: { [key: string]: { track_expiry: boolean; name: string } } = {};
+
         for (const item of billData.items) {
           const prodId = item.product_id;
-          // Fetch current product selling price if available
           const { data: prodData } = await supabase
             .from("products")
-            .select("selling_price")
+            .select("selling_price, track_expiry, name")
             .eq("id", prodId)
             .single();
 
           initialPrices[prodId] = prodData?.selling_price ? String(prodData.selling_price) : String(Number(item.landedCostPerUnit || item.purchase_price || 0) * 1.25);
+          initialFlags[prodId] = {
+            track_expiry: Boolean(prodData?.track_expiry),
+            name: prodData?.name || item.name,
+          };
         }
         setSellingPrices(initialPrices);
+        setProductFlags(initialFlags);
       }
     } catch (err: any) {
       console.error("Error loading purchase bill review:", err);
@@ -83,6 +95,12 @@ export default function BillReviewPage() {
     setSellingPrices((prev) => ({ ...prev, [productId]: val }));
   };
 
+  const handleBatchChange = (productId: string, field: "batch_number" | "manufacture_date" | "expiry_date", val: string) => {
+    if (field === "batch_number") setBatchNumbers((prev) => ({ ...prev, [productId]: val }));
+    if (field === "manufacture_date") setManufactureDates((prev) => ({ ...prev, [productId]: val }));
+    if (field === "expiry_date") setExpiryDates((prev) => ({ ...prev, [productId]: val }));
+  };
+
   const handleFinalizeAddStock = async () => {
     if (!business?.id || !bill) return;
 
@@ -91,19 +109,34 @@ export default function BillReviewPage() {
     setSuccessMsg("");
 
     try {
-      // Validate selling prices
+      // Validate selling prices and expiry details for tracked products
       const productUpdates = bill.items.map((item: any) => {
         const prodId = item.product_id;
         const rawPrice = sellingPrices[prodId];
         const newPrice = Number(rawPrice);
+        const flag = productFlags[prodId];
 
         if (isNaN(newPrice) || newPrice < 0 || !isFinite(newPrice)) {
           throw new Error(`Invalid selling price for "${item.name}". Must be a valid non-negative number.`);
         }
 
+        if (flag?.track_expiry) {
+          const expDate = expiryDates[prodId];
+          if (!expDate) {
+            throw new Error(`Expiry date is required for tracked product "${item.name}". Please enter batch details.`);
+          }
+          const mfgDate = manufactureDates[prodId];
+          if (mfgDate && mfgDate > expDate) {
+            throw new Error(`Manufacture date cannot be after expiry date for "${item.name}".`);
+          }
+        }
+
         return {
           product_id: prodId,
           selling_price: newPrice,
+          batch_number: batchNumbers[prodId] || null,
+          manufacture_date: manufactureDates[prodId] || null,
+          expiry_date: expiryDates[prodId] || null,
         };
       });
 
@@ -125,7 +158,7 @@ export default function BillReviewPage() {
       if (rpcError) throw new Error(rpcError.message);
       if (rpcResult && rpcResult.error) throw new Error(rpcResult.error);
 
-      setSuccessMsg("Stock added and prices updated successfully!");
+      setSuccessMsg("Stock added, batches created, and prices updated successfully!");
       setTimeout(() => {
         router.push(`/dashboard/stock/bills/${billId}`);
       }, 1500);
@@ -214,7 +247,7 @@ export default function BillReviewPage() {
 
         {/* PRODUCTS TABLE / CARDS */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden space-y-4 p-6">
-          <h3 className="font-extrabold text-slate-900 text-sm">Review Products & Set Selling Prices</h3>
+          <h3 className="font-extrabold text-slate-900 text-sm">Review Products, Batch Details & Set Selling Prices</h3>
 
           <div className="space-y-4">
             {(bill.items || []).map((item: any, idx: number) => {
@@ -226,12 +259,20 @@ export default function BillReviewPage() {
               const sellPrice = Number(sellPriceStr) || 0;
               const profitPerUnit = sellPrice - landedCost;
               const margin = sellPrice > 0 ? (profitPerUnit / sellPrice) * 100 : 0;
+              const isTracked = Boolean(productFlags[item.product_id]?.track_expiry);
 
               return (
                 <div key={idx} className="p-4 bg-slate-50 rounded-2xl border space-y-3">
                   <div className="flex justify-between items-start gap-2">
                     <div>
-                      <h4 className="font-black text-slate-900 text-sm">{item.name}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-black text-slate-900 text-sm">{item.name}</h4>
+                        {isTracked && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded-md flex items-center gap-1 border border-amber-300">
+                            <CalendarClock className="w-3 h-3" /> Expiry Tracked
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[10px] font-mono text-slate-400">Qty: {qty} • Purchase Price: ₹{purPrice.toFixed(2)}</p>
                     </div>
                     <div className="text-right">
@@ -250,44 +291,90 @@ export default function BillReviewPage() {
                         disabled={isAlreadyAdded || submitting}
                         value={sellPriceStr}
                         onChange={(e) => handlePriceChange(item.product_id, e.target.value)}
-                        className="w-full h-11 bg-white border border-slate-200 rounded-xl px-3 font-bold text-slate-900 outline-none focus:border-blue-600 disabled:opacity-60"
+                        className="w-full h-10 px-3 border border-slate-300 rounded-xl bg-white font-black text-slate-900 outline-none focus:border-blue-600 disabled:bg-slate-100"
+                        placeholder="0.00"
                       />
                     </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Est. Profit / Unit</span>
-                      <span className={`block py-2.5 font-black text-xs ${profitPerUnit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex flex-col justify-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Profit / Unit</span>
+                      <span className={`font-black text-xs ${profitPerUnit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                         ₹{profitPerUnit.toFixed(2)}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Est. Margin</span>
-                      <span className={`block py-2.5 font-black text-xs ${margin >= 0 ? "text-blue-600" : "text-rose-600"}`}>
+
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex flex-col justify-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Profit Margin</span>
+                      <span className={`font-black text-xs ${margin >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                         {margin.toFixed(1)}%
                       </span>
                     </div>
                   </div>
+
+                  {/* BATCH & EXPIRY INPUTS IF TRACKED */}
+                  {isTracked && !isAlreadyAdded && (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl space-y-2 mt-2">
+                      <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                        <CalendarClock className="w-3.5 h-3.5" /> Batch & Expiry Entry Required
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-amber-900 mb-1">Batch Number</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. LOT-2026-A"
+                            value={batchNumbers[item.product_id] || ""}
+                            onChange={(e) => handleBatchChange(item.product_id, "batch_number", e.target.value)}
+                            className="w-full h-9 px-2.5 border border-amber-300 rounded-lg bg-white text-xs outline-none focus:border-amber-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-amber-900 mb-1">Mfg Date (Opt)</label>
+                          <input
+                            type="date"
+                            value={manufactureDates[item.product_id] || ""}
+                            onChange={(e) => handleBatchChange(item.product_id, "manufacture_date", e.target.value)}
+                            className="w-full h-9 px-2.5 border border-amber-300 rounded-lg bg-white text-xs outline-none focus:border-amber-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-amber-900 mb-1">Expiry Date *</label>
+                          <input
+                            type="date"
+                            required
+                            min={new Date().toISOString().split("T")[0]}
+                            value={expiryDates[item.product_id] || ""}
+                            onChange={(e) => handleBatchChange(item.product_id, "expiry_date", e.target.value)}
+                            className="w-full h-9 px-2.5 border border-amber-300 rounded-lg bg-white text-xs outline-none focus:border-amber-600 font-bold text-amber-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
           {!isAlreadyAdded && (
-            <div className="pt-4 border-t flex gap-3">
+            <div className="pt-4 border-t border-slate-100 flex justify-end">
               <button
                 type="button"
-                onClick={() => router.push(`/dashboard/stock/bills/${billId}`)}
-                disabled={submitting}
-                className="flex-1 py-3.5 border rounded-2xl font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-              >
-                View Bill Details
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
                 onClick={handleFinalizeAddStock}
-                className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+                disabled={submitting}
+                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-2 disabled:opacity-50"
               >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirm & Add Stock"}
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Adding Stock & Creating Batches...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Confirm & Add Stock To Inventory</span>
+                  </>
+                )}
               </button>
             </div>
           )}

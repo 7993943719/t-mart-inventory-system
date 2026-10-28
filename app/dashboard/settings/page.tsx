@@ -16,6 +16,9 @@ import {
   Plus,
   ArrowLeftRight,
   Sparkles,
+  CreditCard,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -29,6 +32,7 @@ export default function SettingsPage() {
   const [business, setBusiness] = useState<any>(null);
   const [userName, setUserName] = useState("Admin");
   const [role, setRole] = useState("OWNER");
+  const [subscription, setSubscription] = useState<any>(null);
 
   // Profile form state
   const [businessName, setBusinessName] = useState("");
@@ -79,6 +83,15 @@ export default function SettingsPage() {
             setBusinessEmail(biz.email || user.email || "");
             setBusinessAddress(biz.address || "");
             setGstNumber(biz.gst_number || "");
+
+            // Fetch actual subscription record from Supabase
+            const { data: sub } = await supabase
+              .from("subscriptions")
+              .select("*")
+              .eq("business_id", biz.id)
+              .maybeSingle();
+
+            setSubscription(sub);
           }
         }
 
@@ -141,10 +154,56 @@ export default function SettingsPage() {
 
   const settingsTabs = [
     { id: "profile", label: "Business Profile", icon: Building },
+    { id: "subscription", label: "Subscription Plans", icon: CreditCard },
     { id: "permissions", label: "Users & Permissions", icon: Users },
     { id: "inventory", label: "Inventory", icon: Boxes },
     { id: "billing", label: "Billing", icon: ReceiptText },
     { id: "notifications", label: "Notifications", icon: Bell },
+  ];
+
+  const planInfoList = [
+    {
+      id: "basic",
+      name: "Basic Plan",
+      price: "₹99",
+      period: "/ month",
+      desc: "Essential POS billing, product catalog management & stock tracking for small retail stores.",
+      features: [
+        "Unlimited POS Billing & Invoices",
+        "Product Catalog & Barcode Scanning",
+        "Stock Inventory Management",
+        "Basic Daily Sales Summary",
+        "Single Counter Access",
+      ],
+    },
+    {
+      id: "pro",
+      name: "Pro Plan",
+      price: "₹250",
+      period: "/ month",
+      desc: "Advanced multi-counter inventory, staff management & real-time analytics for growing supermarkets.",
+      features: [
+        "Everything in Basic Plan",
+        "Multi-Counter POS Billing",
+        "Staff Roles & Permissions",
+        "Vendor & Purchase Bills Tracking",
+        "Advanced Profit & Sales Reports",
+      ],
+    },
+    {
+      id: "plus",
+      name: "Plus Plan",
+      price: "₹450",
+      period: "/ month",
+      desc: "Full enterprise automation, delivery fulfillment & priority Super Owner support for large stores.",
+      features: [
+        "Everything in Pro Plan",
+        "Delivery Fulfillment & Tracking",
+        "AI Inventory Camera Scan Integration",
+        "Multi-Location Sync",
+        "Priority Super Owner Support",
+      ],
+    },
   ];
 
   return (
@@ -157,7 +216,7 @@ export default function SettingsPage() {
       {/* PAGE HEADER */}
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs">
         <h2 className="text-xl sm:text-2xl font-black text-slate-900">Settings</h2>
-        <p className="text-xs text-slate-500 font-medium mt-0.5">Manage your business profile, permissions, inventory and security.</p>
+        <p className="text-xs text-slate-500 font-medium mt-0.5">Manage your business profile, subscription plans, permissions, inventory and security.</p>
       </div>
 
       {errorMsg && (
@@ -317,9 +376,6 @@ export default function SettingsPage() {
                     </div>
                   </Link>
                 </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Products, purchases, sales, staff, and reports must remain isolated for each business.
-                </p>
               </div>
 
               {/* BUSINESS DELETION SAFETY NOTICE */}
@@ -332,7 +388,7 @@ export default function SettingsPage() {
                   <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-4 text-xs text-amber-950 space-y-1.5">
                     <p className="font-extrabold">Deletion is temporarily disabled for safety.</p>
                     <p className="leading-relaxed text-amber-900">
-                      Before deletion can be enabled, TWEB must safely handle purchase bills, sales items, stock movements, financial records, and staff access. Your login and any other businesses must remain intact. No data has been deleted.
+                      Before deletion can be enabled, TWEB must safely handle purchase bills, sales items, stock movements, financial records, and staff access. Your login and any other businesses must remain intact.
                     </p>
                   </div>
                 </div>
@@ -340,7 +396,60 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* 2. USERS & PERMISSIONS */}
+          {/* 2. INFORMATIONAL SUBSCRIPTION PLANS VIEW */}
+          {activeTab === "subscription" && (
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b border-slate-100 gap-3">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">TWEB Subscription Plans</h3>
+                  <p className="text-xs text-slate-500">Informational overview of available platform plans. Plan activation is handled by Super Owner verification.</p>
+                </div>
+
+                {subscription && (
+                  <div className="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2 text-xs font-bold text-slate-700">
+                    <Clock className="w-4 h-4 text-indigo-600" />
+                    <span>Status: <strong className="uppercase text-indigo-600 font-black">{subscription.status || "Trial"}</strong></span>
+                    {subscription.trial_ends_at && (
+                      <span className="text-[10px] text-slate-400">• Trial Expiry: {new Date(subscription.trial_ends_at).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* MODULAR PLAN CARDS (Informational only — no payment or purchase buttons) */}
+              <div className="grid grid-cols-1 gap-5">
+                {planInfoList.map((plan) => (
+                  <div key={plan.id} className="p-6 rounded-3xl border border-slate-200 bg-slate-50/50 space-y-4 hover:border-indigo-200 transition">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-extrabold text-[10px] uppercase rounded-full tracking-wider">
+                          {plan.name}
+                        </span>
+                        <h4 className="text-2xl font-black text-slate-900 mt-2">{plan.price} <span className="text-xs font-medium text-slate-400">{plan.period}</span></h4>
+                      </div>
+                      <span className="text-xs font-bold text-slate-400 bg-white px-3 py-1 rounded-xl border border-slate-200">Informational</span>
+                    </div>
+
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">{plan.desc}</p>
+
+                    <div className="pt-3 border-t border-slate-200/80 space-y-2">
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Features Included</p>
+                      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold text-slate-700">
+                        {plan.features.map((feat, fIdx) => (
+                          <li key={fIdx} className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>{feat}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 3. USERS & PERMISSIONS */}
           {activeTab === "permissions" && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div>
@@ -376,7 +485,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* 3. INVENTORY SETTINGS */}
+          {/* 4. INVENTORY SETTINGS */}
           {activeTab === "inventory" && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div>
@@ -449,7 +558,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* 4. BILLING SETTINGS */}
+          {/* 5. BILLING SETTINGS */}
           {activeTab === "billing" && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div>
@@ -530,7 +639,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* 5. NOTIFICATIONS SETTINGS */}
+          {/* 6. NOTIFICATIONS SETTINGS */}
           {activeTab === "notifications" && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div>

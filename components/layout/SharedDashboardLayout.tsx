@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   Users,
   Boxes,
+  CalendarClock,
   UserCheck,
   Truck,
   Share2,
@@ -51,6 +52,7 @@ export function SharedDashboardLayout({
     { label: "Customers", icon: UserCheck, path: "/dashboard/customers" },
     { label: "Vendors", icon: Truck, path: "/dashboard/purchases" },
     { label: "Stock", icon: Boxes, path: "/dashboard/stock" },
+    { label: "Expiry", icon: CalendarClock, path: "/dashboard/expiry" },
     { label: "Staff", icon: Users, path: "/dashboard/staff" },
   ];
 

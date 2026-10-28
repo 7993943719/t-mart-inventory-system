@@ -60,31 +60,19 @@ export async function createStaffMember(formData: {
     throw new Error("Only Owner or Admin can add staff members.");
   }
 
-  // Verify subscription member limit
+  // Verify subscription member limit (fail closed on error)
   const { data: limitCheck, error: limitErr } = await supabaseServer.rpc("check_business_member_limit", {
     p_business_id: businessId,
   });
 
-  if (!limitErr && limitCheck && limitCheck.allowed === false) {
-    throw new Error(limitCheck.message || `Your plan allows only ${limitCheck.limit} members. To add more members, contact T Mart Helpline: 7993943719.`);
+  if (limitErr) {
+    console.error("Subscription member limit check error:", limitErr);
+    throw new Error(limitErr.message || "Failed to verify subscription member limit.");
   }
 
-  if (limitErr) {
-    const { count, error: countErr } = await supabaseServer
-      .from("business_members")
-      .select("*", { count: "exact", head: true })
-      .eq("business_id", businessId);
-
-    const { data: subData } = await supabaseServer
-      .from("subscriptions")
-      .select("member_limit")
-      .eq("business_id", businessId)
-      .maybeSingle();
-
-    const maxLimit = subData?.member_limit || 1;
-    if (!countErr && (count || 0) >= maxLimit) {
-      throw new Error(`Your plan allows only ${maxLimit} members. To add more members, contact T Mart Helpline: 7993943719.`);
-    }
+  if (limitCheck && limitCheck.allowed === false) {
+    const limitVal = limitCheck.limit || 1;
+    throw new Error(limitCheck.message || `Your plan allows only ${limitVal} members. To add more members, contact T Mart Helpline: 7993943719.`);
   }
 
   const dbRole = roleMap[role as keyof typeof roleMap] || "staff";
