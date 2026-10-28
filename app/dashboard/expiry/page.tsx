@@ -243,6 +243,19 @@ export default function ExpiryPage() {
     return products.filter((product) => `${product.name} ${product.category || ""} ${product.barcode || ""}`.toLowerCase().includes(q));
   }, [products, search]);
 
+  const getActiveBatchesForProduct = (productId: string) =>
+    batches
+      .filter((batch) => batch.product_id === productId && Number(batch.remaining_quantity) > 0)
+      .sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
+
+  const getUnassignedStock = (product: Product) => {
+    const assignedQty = getActiveBatchesForProduct(product.id).reduce(
+      (sum, batch) => sum + Number(batch.remaining_quantity || 0),
+      0
+    );
+    return Math.max(0, Number(product.stock_quantity || 0) - assignedQty);
+  };
+
   const beginTracking = async (product: Product) => {
     setErrorMsg("");
     setSuccessMsg("");
@@ -253,6 +266,14 @@ export default function ExpiryPage() {
     }
 
     if (product.track_expiry) {
+      if (getUnassignedStock(product) > 0) {
+        setTrackingProduct(product);
+        setOpeningBatchNumber("");
+        setOpeningManufactureDate("");
+        setOpeningExpiryDate("");
+        return;
+      }
+
       try {
         setSavingTracking(true);
         const { error } = await supabase.rpc("set_product_expiry_tracking", {
@@ -335,6 +356,7 @@ export default function ExpiryPage() {
     try {
       setSavingTracking(true);
       setErrorMsg("");
+      const wasAlreadyTracked = trackingProduct.track_expiry;
       const { error } = await supabase.rpc("set_product_expiry_tracking", {
         p_business_id: businessId,
         p_product_id: trackingProduct.id,
@@ -344,8 +366,27 @@ export default function ExpiryPage() {
         p_manufacture_date: openingManufactureDate || null,
       });
       if (error) throw error;
+
+      const { data: savedBatches, error: verifyError } = await supabase
+        .from("product_batches")
+        .select("id, expiry_date, remaining_quantity")
+        .eq("business_id", businessId)
+        .eq("product_id", trackingProduct.id)
+        .eq("expiry_date", openingExpiryDate)
+        .gt("remaining_quantity", 0)
+        .limit(1);
+
+      if (verifyError) throw verifyError;
+      if (!savedBatches || savedBatches.length === 0) {
+        throw new Error("Tracking was updated, but an active batch with that expiry date was not found. Refresh and try again.");
+      }
+
       setTrackingProduct(null);
-      setSuccessMsg(`Expiry tracking enabled for ${trackingProduct.name}; existing stock was assigned to an opening batch.`);
+      setSuccessMsg(
+        wasAlreadyTracked
+          ? `Opening batch saved for ${trackingProduct.name}. Expiry date: ${openingExpiryDate}.`
+          : `Expiry tracking enabled for ${trackingProduct.name}. Opening batch saved with expiry date ${openingExpiryDate}.`
+      );
       await loadData(true);
     } catch (error: any) {
       setErrorMsg(error?.message || "Could not enable expiry tracking.");
@@ -453,13 +494,22 @@ export default function ExpiryPage() {
             {visibleBatches.length === 0 ? <div className="p-12 text-center"><Package className="mx-auto mb-3 h-8 w-8 text-slate-300" /><h3 className="font-bold text-slate-800">No batches match this view</h3><p className="mt-1 text-sm text-slate-500">Enable expiry tracking and record batches when receiving stock.</p></div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-4 py-3">Product / Batch</th><th className="px-4 py-3">Expiry</th><th className="px-4 py-3">Remaining</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Action</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleBatches.map((batch) => { const product = productById.get(batch.product_id); const days = daysUntil(batch.expiry_date); return <tr key={batch.id} className="align-top"><td className="px-4 py-4"><div className="font-bold text-slate-900">{product?.name || "Unknown product"}</div><div className="mt-1 text-xs text-slate-500">{batch.batch_number ? `Batch: ${batch.batch_number}` : "No batch number"} · {product?.category || "Uncategorized"}</div></td><td className="px-4 py-4"><div className="font-semibold text-slate-800">{batch.expiry_date}</div><span className={`mt-1 inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${expiryTone(days)}`}>{expiryLabel(days)}</span></td><td className="px-4 py-4"><div className="font-black text-slate-900">{Number(batch.remaining_quantity).toLocaleString("en-IN")} <span className="font-semibold text-slate-500">{product?.unit || "units"}</span></div><div className="mt-1 text-xs text-slate-500">Received: {Number(batch.received_quantity).toLocaleString("en-IN")}</div></td><td className="px-4 py-4"><div className="text-xs font-bold text-slate-700">{batch.source_type.replaceAll("_", " ")}</div><div className="mt-1 text-[11px] text-slate-500">{batch.purchase_bill_id ? `Bill ${batch.purchase_bill_id.slice(0, 8)}` : `Received ${new Date(batch.received_at).toLocaleDateString()}`}</div></td><td className="px-4 py-4">{isOwnerOrAdmin ? <button type="button" onClick={() => openDisposal(batch)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 hover:bg-rose-100"><Trash2 className="h-3.5 w-3.5" />Dispose</button> : <span className="text-xs text-slate-400">Admin action</span>}</td></tr>; })}</tbody></table></div>}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">{visibleProducts.map((product) => <div key={product.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="font-black text-slate-900">{product.name}</div><div className="mt-1 text-xs text-slate-500">{product.category || "Uncategorized"} · Stock: {Number(product.stock_quantity || 0).toLocaleString("en-IN")} {product.unit || "units"}</div></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${product.track_expiry ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-600"}`}>{product.track_expiry ? "EXPIRY ON" : "EXPIRY OFF"}</span></div><div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3"><div className="text-xs text-slate-500">{product.track_expiry ? `${batches.filter((batch) => batch.product_id === product.id).length} active batch(es)` : "Uses the existing stock flow until enabled."}</div>{isOwnerOrAdmin ? <button type="button" onClick={() => void beginTracking(product)} disabled={savingTracking} className={`min-h-10 rounded-xl px-3 text-xs font-bold disabled:opacity-60 ${product.track_expiry ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}>{savingTracking ? "Saving..." : product.track_expiry ? "Disable tracking" : "Enable tracking"}</button> : <span className="inline-flex items-center gap-1 text-xs text-slate-400"><ShieldCheck className="h-3.5 w-3.5" />Owner/Admin only</span>}</div></div>)}</div>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">{visibleProducts.map((product) => <div key={product.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="font-black text-slate-900">{product.name}</div><div className="mt-1 text-xs text-slate-500">{product.category || "Uncategorized"} · Stock: {Number(product.stock_quantity || 0).toLocaleString("en-IN")} {product.unit || "units"}</div></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${product.track_expiry ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-600"}`}>{product.track_expiry ? "EXPIRY ON" : "EXPIRY OFF"}</span></div><div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3"><div className="text-xs text-slate-500">{product.track_expiry ? (() => {
+            const activeBatches = getActiveBatchesForProduct(product.id);
+            const unassigned = getUnassignedStock(product);
+            if (activeBatches.length === 0) {
+              return unassigned > 0
+                ? "No batch date saved · Select Add opening batch"
+                : "No active batches recorded.";
+            }
+            return `${activeBatches.length} active batch(es) · Next expiry: ${activeBatches[0].expiry_date}${unassigned > 0 ? ` · Unassigned stock: ${unassigned}` : ""}`;
+          })() : "Uses the existing stock flow until enabled."}</div>{isOwnerOrAdmin ? <button type="button" onClick={() => void beginTracking(product)} disabled={savingTracking} className={`min-h-10 rounded-xl px-3 text-xs font-bold disabled:opacity-60 ${product.track_expiry ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}>{savingTracking ? "Saving..." : product.track_expiry ? (getUnassignedStock(product) > 0 ? "Add opening batch" : "Disable tracking") : "Enable tracking"}</button> : <span className="inline-flex items-center gap-1 text-xs text-slate-400"><ShieldCheck className="h-3.5 w-3.5" />Owner/Admin only</span>}</div></div>)}</div>
         )}
 
         {!loading && <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs leading-relaxed text-blue-900"><div className="flex items-center gap-2 font-black"><ShieldCheck className="h-4 w-4" />How expiry tracking works</div><p className="mt-1">Each receipt creates a separate batch. Checkout uses FEFO (earliest expiry first) for tracked products and rejects expired or insufficient eligible batches. If a product already has stock when tracking is enabled, assign an opening batch date instead of guessing. Stock-count adjustments for tracked items require batch reconciliation so totals remain consistent.</p></div>}
       </div>
 
-      {trackingProduct && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="opening-batch-title"><form onSubmit={saveOpeningBatch} className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-3"><div><h3 id="opening-batch-title" className="text-lg font-black text-slate-900">Enable expiry tracking</h3><p className="mt-1 text-sm text-slate-500">{trackingProduct.name} has {Number(trackingProduct.stock_quantity || 0)} existing units. Assign them to a real batch.</p></div><button type="button" onClick={() => setTrackingProduct(null)} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100" aria-label="Close"><X className="h-5 w-5" /></button></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Batch / lot number (optional)</label><input value={openingBatchNumber} onChange={(event) => setOpeningBatchNumber(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" placeholder="e.g. LOT-2026-08" /></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Manufacture date (optional)</label><input type="date" value={openingManufactureDate} onChange={(event) => setOpeningManufactureDate(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" /></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Expiry date <span className="text-rose-600">*</span></label><input type="date" required={Number(trackingProduct.stock_quantity || 0) > 0} value={openingExpiryDate} onChange={(event) => setOpeningExpiryDate(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" /></div><p className="rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">TWEB will create an opening batch equal to the current stock count. The aggregate product quantity will not change. Verify the expiry date from the product packaging first.</p><div className="flex justify-end gap-2"><button type="button" onClick={() => setTrackingProduct(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancel</button><button type="submit" disabled={savingTracking} className="min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white disabled:opacity-60">{savingTracking ? "Saving..." : "Enable tracking"}</button></div></form></div>}
+      {trackingProduct && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="opening-batch-title"><form onSubmit={saveOpeningBatch} className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-3"><div><h3 id="opening-batch-title" className="text-lg font-black text-slate-900">{trackingProduct.track_expiry ? "Add opening batch" : "Enable expiry tracking"}</h3><p className="mt-1 text-sm text-slate-500">{trackingProduct.name} has {getUnassignedStock(trackingProduct)} units not assigned to an active expiry batch. Enter the verified date from the product packaging.</p></div><button type="button" onClick={() => setTrackingProduct(null)} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100" aria-label="Close"><X className="h-5 w-5" /></button></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Batch / lot number (optional)</label><input value={openingBatchNumber} onChange={(event) => setOpeningBatchNumber(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" placeholder="e.g. LOT-2026-08" /></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Manufacture date (optional)</label><input type="date" value={openingManufactureDate} onChange={(event) => setOpeningManufactureDate(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" /></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Expiry date <span className="text-rose-600">*</span></label><input type="date" required={Number(trackingProduct.stock_quantity || 0) > 0} value={openingExpiryDate} onChange={(event) => setOpeningExpiryDate(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-emerald-500" /></div><p className="rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">TWEB will create an opening batch equal to the current stock count. The aggregate product quantity will not change. Verify the expiry date from the product packaging first.</p><div className="flex justify-end gap-2"><button type="button" onClick={() => setTrackingProduct(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancel</button><button type="submit" disabled={savingTracking} className="min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white disabled:opacity-60">{savingTracking ? "Saving..." : trackingProduct.track_expiry ? "Save opening batch" : "Enable tracking"}</button></div></form></div>}
 
       {disposeBatch && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="dispose-batch-title"><form onSubmit={submitDisposal} className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-5 shadow-2xl sm:p-6"><div className="flex items-start justify-between gap-3"><div><h3 id="dispose-batch-title" className="text-lg font-black text-slate-900">Record batch disposal</h3><p className="mt-1 text-sm text-slate-500">{productById.get(disposeBatch.product_id)?.name || "Product"} · expiry {disposeBatch.expiry_date}</p></div><button type="button" onClick={() => setDisposeBatch(null)} className="rounded-lg p-1 text-slate-500 hover:bg-slate-100" aria-label="Close"><X className="h-5 w-5" /></button></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Quantity to dispose</label><input type="number" min="0.001" step="0.001" max={disposeBatch.remaining_quantity} required value={disposeQuantity} onChange={(event) => setDisposeQuantity(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-rose-500" /></div><div><label className="mb-1 block text-xs font-bold text-slate-600">Reason</label><textarea required value={disposeReason} onChange={(event) => setDisposeReason(event.target.value)} rows={3} className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-rose-500" /></div><p className="rounded-xl bg-rose-50 p-3 text-xs leading-relaxed text-rose-800">This records an audited stock movement and reduces both batch remaining quantity and aggregate stock in one transaction. It cannot be undone by deleting the history row.</p><div className="flex justify-end gap-2"><button type="button" onClick={() => setDisposeBatch(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancel</button><button type="submit" disabled={disposing} className="min-h-11 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white disabled:opacity-60">{disposing ? "Recording..." : "Record disposal"}</button></div></form></div>}
     </SharedDashboardLayout>
