@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { SharedDashboardLayout } from "@/components/layout/SharedDashboardLayout";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -70,6 +70,14 @@ export default function StockAuditPage() {
   const [toDate, setToDate] = useState<string>(() => getISTToday());
   const [discrepancyFilter, setDiscrepancyFilter] = useState<"ALL" | "SHORTAGE" | "EXCESS" | "MATCHED">("ALL");
 
+  // Refs for date range to prevent stale closures in focus/realtime callbacks
+  const fromDateRef = useRef(fromDate);
+  const toDateRef = useRef(toDate);
+  useEffect(() => {
+    fromDateRef.current = fromDate;
+    toDateRef.current = toDate;
+  }, [fromDate, toDate]);
+
   // Correction Modal State
   const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
   const [selectedAuditItem, setSelectedAuditItem] = useState<any>(null);
@@ -112,7 +120,7 @@ export default function StockAuditPage() {
 
       const bizId = currentBiz?.id || user.id;
 
-      // 1. Get or create today's 24-hour audit cycle in Asia/Kolkata time
+      // 1. Get or create today's 24-hour audit cycle in Asia/Kolkata time (Staff workflow)
       const { data: cycleRes, error: cycleErr } = await supabase.rpc("get_or_create_stock_audit_cycle", {
         p_business_id: bizId,
       });
@@ -141,9 +149,9 @@ export default function StockAuditPage() {
       }
       setQtyInputs(initialInputs);
 
-      // If user is owner/admin, fetch admin report
+      // If user is owner/admin, fetch multi-cycle admin report immediately passing resolved bizId and userRole explicitly (avoiding stale state)
       if (userRole === "OWNER" || userRole === "ADMIN") {
-        fetchAdminReport(bizId, cycleId);
+        await fetchAdminReport(bizId, undefined, fromDate, toDate, userRole);
       }
     } catch (err: any) {
       console.error("Audit initialization failed:", err);
@@ -154,23 +162,26 @@ export default function StockAuditPage() {
   };
 
   const fetchAdminReport = async (
-    bizId?: string,
-    cycleId?: string,
+    overrideBusinessId?: string,
     staffId?: string,
     overrideFromDate?: string,
-    overrideToDate?: string
+    overrideToDate?: string,
+    overrideRole?: string
   ) => {
-    const bId = bizId || business?.id;
-    const cId = cycleId || activeCycle?.cycle_id;
+    const resolvedRole = overrideRole !== undefined ? overrideRole : role;
+    if (resolvedRole !== "OWNER" && resolvedRole !== "ADMIN") return;
+
+    const bId = overrideBusinessId ?? business?.id;
     if (!bId) return;
 
-    const fDate = overrideFromDate !== undefined ? overrideFromDate : fromDate;
-    const tDate = overrideToDate !== undefined ? overrideToDate : toDate;
+    const fDate = overrideFromDate !== undefined ? overrideFromDate : fromDateRef.current;
+    const tDate = overrideToDate !== undefined ? overrideToDate : toDateRef.current;
 
     try {
       const { data: rpcResult, error: rpcErr } = await supabase.rpc("get_admin_stock_audit_report", {
         p_business_id: bId,
-        p_cycle_id: cId || null,
+        p_cycle_id: null,
+        p_cycle_date: null,
         p_staff_id: staffId || null,
         p_from_date: fDate || null,
         p_to_date: tDate || null,
@@ -187,6 +198,39 @@ export default function StockAuditPage() {
   useEffect(() => {
     initializeAudit();
   }, [supabase]);
+
+  useEffect(() => {
+    const isAdmin = role === "OWNER" || role === "ADMIN";
+    if (!isAdmin || !business?.id) return;
+
+    const handleFocus = () => {
+      fetchAdminReport(business.id, undefined, fromDateRef.current, toDateRef.current);
+    };
+    window.addEventListener("focus", handleFocus);
+
+    let channel: any = null;
+    if (business?.id) {
+      channel = supabase
+        .channel("stock-audit-live-reconciliation")
+        .on("postgres_changes", { event: "*", schema: "public", table: "stock_movements", filter: `business_id=eq.${business.id}` }, () => {
+          fetchAdminReport(business.id, undefined, fromDateRef.current, toDateRef.current);
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "sales", filter: `business_id=eq.${business.id}` }, () => {
+          fetchAdminReport(business.id, undefined, fromDateRef.current, toDateRef.current);
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "stock_audit_entries", filter: `business_id=eq.${business.id}` }, () => {
+          fetchAdminReport(business.id, undefined, fromDateRef.current, toDateRef.current);
+        })
+        .subscribe();
+    }
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [supabase, business?.id, role]);
 
   // Handle staff physical count submission
   const handleSaveProductAudit = async (productId: string) => {
@@ -334,29 +378,42 @@ export default function StockAuditPage() {
             </p>
           </div>
 
-          {/* TAB BUTTONS */}
-          <div className="flex bg-black/20 p-1.5 rounded-2xl border border-white/20 text-xs font-black">
-            <button
-              onClick={() => setActiveTab("staff")}
-              className={`px-4 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
-                activeTab === "staff" ? "bg-white text-slate-900 shadow-md" : "text-amber-100 hover:text-white"
-              }`}
-            >
-              <ClipboardCheck className="w-4 h-4" /> Staff Count
-            </button>
+          {/* TAB BUTTONS & MANUAL REFRESH */}
+          <div className="flex items-center gap-3">
             {(role === "OWNER" || role === "ADMIN") && (
               <button
-                onClick={() => {
-                  setActiveTab("admin");
-                  fetchAdminReport();
-                }}
-                className={`px-4 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === "admin" ? "bg-white text-slate-900 shadow-md" : "text-amber-100 hover:text-white"
-                }`}
+                type="button"
+                onClick={() => fetchAdminReport()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition cursor-pointer border border-white/20"
+                title="Refresh admin audit report"
               >
-                <ShieldAlert className="w-4 h-4" /> Admin Discrepancy Report
+                <RotateCcw className="w-3.5 h-3.5" /> Refresh
               </button>
             )}
+
+            <div className="flex bg-black/20 p-1.5 rounded-2xl border border-white/20 text-xs font-black">
+              <button
+                onClick={() => setActiveTab("staff")}
+                className={`px-4 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "staff" ? "bg-white text-slate-900 shadow-md" : "text-amber-100 hover:text-white"
+                }`}
+              >
+                <ClipboardCheck className="w-4 h-4" /> Staff Count
+              </button>
+              {(role === "OWNER" || role === "ADMIN") && (
+                <button
+                  onClick={() => {
+                    setActiveTab("admin");
+                    fetchAdminReport();
+                  }}
+                  className={`px-4 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === "admin" ? "bg-white text-slate-900 shadow-md" : "text-amber-100 hover:text-white"
+                  }`}
+                >
+                  <ShieldAlert className="w-4 h-4" /> Admin Discrepancy Report
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -562,7 +619,7 @@ export default function StockAuditPage() {
                           }
                           setErrorMsg("");
                           setFromDate(val);
-                          fetchAdminReport(undefined, undefined, undefined, val, undefined);
+                          fetchAdminReport(undefined, undefined, val, undefined);
                         }}
                         className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-amber-600 h-9"
                       />
@@ -589,7 +646,7 @@ export default function StockAuditPage() {
                           }
                           setErrorMsg("");
                           setToDate(val);
-                          fetchAdminReport(undefined, undefined, undefined, undefined, val);
+                          fetchAdminReport(undefined, undefined, undefined, val);
                         }}
                         className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-amber-600 h-9"
                       />
@@ -649,9 +706,9 @@ export default function StockAuditPage() {
                 <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden space-y-4 p-6">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
-                      <h3 className="font-black text-slate-900 text-sm">Discrepancy Breakdown & Audit Logs</h3>
+                      <h3 className="font-black text-slate-900 text-sm">Discrepancy Breakdown & Audit Logs (Multi-Cycle Date Range)</h3>
                       <p className="text-[11px] text-slate-400">
-                        Filter: <strong className="text-slate-700">{discrepancyFilter}</strong> • Difference = Physical Qty - Expected Qty
+                        Filter: <strong className="text-slate-700">{discrepancyFilter}</strong> • Difference = Adjusted Physical Qty - Expected Qty
                       </p>
                     </div>
 
@@ -667,10 +724,13 @@ export default function StockAuditPage() {
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px]">
+                          <th className="p-3">Audit Date</th>
                           <th className="p-3">Product Name</th>
                           <th className="p-3">Staff Member</th>
-                          <th className="p-3 text-right">Physical Qty</th>
-                          <th className="p-3 text-right">Expected Qty</th>
+                          <th className="p-3 text-right">Orig. Qty</th>
+                          <th className="p-3 text-right">Post-Mov</th>
+                          <th className="p-3 text-right">Adj. Qty</th>
+                          <th className="p-3 text-right">System Stock</th>
                           <th className="p-3 text-right">Difference</th>
                           <th className="p-3 text-center">Status</th>
                           <th className="p-3 text-right">Action</th>
@@ -682,14 +742,17 @@ export default function StockAuditPage() {
                             if (discrepancyFilter === "ALL") return true;
                             return item.discrepancy_type === discrepancyFilter;
                           })
-                          .map((item: any, idx: number) => {
+                          .map((item: any) => {
                             const diff = Number(item.difference || 0);
                             return (
-                              <tr key={idx} className="hover:bg-slate-50/80">
+                              <tr key={`${item.cycle_id}-${item.product_id}`} className="hover:bg-slate-50/80">
+                                <td className="p-3 font-mono font-bold text-slate-600">{item.cycle_date}</td>
                                 <td className="p-3 font-extrabold text-slate-900">{item.name}</td>
                                 <td className="p-3 text-slate-600 font-medium">{item.submitted_by_name || "Unchecked"}</td>
-                                <td className="p-3 text-right font-mono font-bold text-slate-900">{item.physical_quantity} {item.unit}</td>
-                                <td className="p-3 text-right font-mono text-slate-500">{item.expected_quantity} {item.unit}</td>
+                                <td className="p-3 text-right font-mono font-bold text-slate-700">{item.original_physical_quantity} {item.unit}</td>
+                                <td className="p-3 text-right font-mono font-semibold text-blue-600">{item.post_count_movement_quantity > 0 ? `+${item.post_count_movement_quantity}` : item.post_count_movement_quantity} {item.unit}</td>
+                                <td className="p-3 text-right font-mono font-bold text-slate-900">{item.adjusted_physical_quantity} {item.unit}</td>
+                                <td className="p-3 text-right font-mono text-slate-500">{item.current_expected_quantity} {item.unit}</td>
                                 <td className={`p-3 text-right font-mono font-black ${diff < 0 ? "text-rose-600" : diff > 0 ? "text-blue-600" : "text-emerald-600"}`}>
                                   {diff > 0 ? `+${diff}` : diff} {item.unit}
                                 </td>
@@ -713,7 +776,7 @@ export default function StockAuditPage() {
                                     <button
                                       onClick={() => {
                                         setSelectedAuditItem(item);
-                                        setCorrectedQty(String(item.physical_quantity));
+                                        setCorrectedQty(String(item.original_physical_quantity));
                                         setCorrectionReason("");
                                         setCorrectionModalOpen(true);
                                       }}
@@ -744,7 +807,7 @@ export default function StockAuditPage() {
               <div className="flex justify-between items-center border-b pb-3">
                 <div>
                   <h3 className="text-base font-black text-slate-900">Correct Staff Count</h3>
-                  <p className="text-[10px] text-slate-400 font-mono">Product: {selectedAuditItem.name}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">Product: {selectedAuditItem.name} (Date: {selectedAuditItem.cycle_date})</p>
                 </div>
                 <button onClick={() => setCorrectionModalOpen(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                   ×
@@ -752,9 +815,10 @@ export default function StockAuditPage() {
               </div>
 
               <div className="bg-slate-50 p-4 rounded-2xl border space-y-2">
-                <div className="flex justify-between"><span>Original Staff Count:</span> <strong className="text-slate-900">{selectedAuditItem.physical_quantity} {selectedAuditItem.unit}</strong></div>
-                <div className="flex justify-between"><span>Checked By:</span> <strong className="text-slate-900">{selectedAuditItem.submitted_by_name}</strong></div>
-                <div className="flex justify-between"><span>Expected Stock (System):</span> <strong className="text-slate-600">{selectedAuditItem.expected_quantity} {selectedAuditItem.unit}</strong></div>
+                <div className="flex justify-between"><span>Original Staff Count:</span> <strong className="text-slate-900">{selectedAuditItem.original_physical_quantity} {selectedAuditItem.unit}</strong></div>
+                <div className="flex justify-between"><span>Post-Count Movements:</span> <strong className="text-blue-600">{selectedAuditItem.post_count_movement_quantity} {selectedAuditItem.unit}</strong></div>
+                <div className="flex justify-between"><span>Adjusted Count:</span> <strong className="text-slate-900">{selectedAuditItem.adjusted_physical_quantity} {selectedAuditItem.unit}</strong></div>
+                <div className="flex justify-between"><span>System Stock (Expected):</span> <strong className="text-slate-600">{selectedAuditItem.current_expected_quantity} {selectedAuditItem.unit}</strong></div>
               </div>
 
               <form onSubmit={handleCorrectSubmit} className="space-y-4">
