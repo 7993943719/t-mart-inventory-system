@@ -89,17 +89,39 @@ export default function ReportsPage() {
         .select("*, businesses(*)")
         .eq("user_id", user.id);
 
-      let canView = false;
+      let currentBiz = null;
+      let userRole = "STAFF";
       let activeBizId = user.id;
+      let memberPerms = null;
+
       if (memberships && memberships.length > 0) {
         const mem = memberships[0];
-        setBusiness(mem.businesses);
-        setRole(mem.role || "OWNER");
+        currentBiz = mem.businesses;
+        userRole = (mem.role || "STAFF").toUpperCase();
         activeBizId = mem.businesses?.id || user.id;
-        const r = (mem.role || "").toLowerCase();
-        const perms = mem.permissions;
-        canView = r === "owner" || r === "admin" || (Array.isArray(perms) && (perms.includes("financials") || perms.includes("cost_view")));
+        memberPerms = mem.permissions;
       }
+
+      if (!currentBiz || currentBiz.owner_id === user.id) {
+        const { data: ownedBiz } = await supabase
+          .from("businesses")
+          .select("*")
+          .eq("owner_id", user.id)
+          .limit(1)
+          .maybeSingle();
+        if (ownedBiz) {
+          currentBiz = ownedBiz;
+          activeBizId = ownedBiz.id;
+          userRole = "OWNER";
+        }
+      }
+
+      const isOwner = userRole === "OWNER" || currentBiz?.owner_id === user.id;
+      const isAdminOrOwner = isOwner || ["ADMIN", "OWNER/ADMIN"].includes(userRole.toUpperCase());
+      const canView = isOwner || isAdminOrOwner || (Array.isArray(memberPerms) && (memberPerms.includes("financials") || memberPerms.includes("cost_view")));
+
+      setBusiness(currentBiz);
+      setRole(isOwner ? "OWNER" : userRole);
       setBusinessId(activeBizId);
 
       if (!canView) {
@@ -264,22 +286,23 @@ export default function ReportsPage() {
     fetchReportData(businessId, "custom", customStartDate, customEndDate);
   };
 
-  // Robust Product Lookup Helper
+  // Robust Product Lookup Helper prioritizing sale-time cost_price_at_sale
   const getProductInfo = (item: any) => {
     let prod = products.find((p) => p.id === item.product_id);
     if (!prod && item.product_name) {
       prod = products.find((p) => p.name?.toLowerCase().trim() === item.product_name?.toLowerCase().trim());
     }
-    const rawPurchasePrice = prod ? prod.purchase_price : item.purchase_price;
-    const hasCost = rawPurchasePrice !== undefined && rawPurchasePrice !== null && !isNaN(Number(rawPurchasePrice));
-    const purchasePrice = hasCost ? Number(rawPurchasePrice) : 0;
+    const rawCostAtSale = item.cost_price_at_sale;
+    const hasSaleCost = rawCostAtSale !== undefined && rawCostAtSale !== null && !isNaN(Number(rawCostAtSale)) && Number(rawCostAtSale) >= 0;
+
+    const purchasePrice = hasSaleCost ? Number(rawCostAtSale) : 0;
     const sellingPrice = Number(item.selling_price || item.price || prod?.selling_price || 0);
 
     return {
       product: prod,
       purchasePrice,
       sellingPrice,
-      hasCost: hasCost && purchasePrice >= 0,
+      hasCost: hasSaleCost,
     };
   };
 
@@ -351,6 +374,10 @@ export default function ReportsPage() {
   const totalSalesAllBills = enrichedSales.reduce((sum, s) => sum + s.billSaleTotal, 0);
   const totalPurchaseAllBills = enrichedSales.reduce((sum, s) => sum + s.billPurchaseCost, 0);
   const totalProfitAllBills = enrichedSales.reduce((sum, s) => sum + s.billProfit, 0);
+
+  const totalOperatingExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  const netProfitAllBills = totalProfitAllBills - totalOperatingExpenses;
+  const totalCostUnavailableCount = enrichedSales.filter((s) => !s.hasAllCosts).length;
 
   // View Bill Details Modal
   const handleViewBillDetails = async (sale: any) => {
@@ -912,23 +939,43 @@ export default function ReportsPage() {
 
       {/* SUMMARY CARDS */}
       {isAdminOrOwner && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          <div className="bg-blue-50/50 border border-blue-200 p-5 rounded-3xl shadow-xs space-y-1">
-            <p className="text-[11px] font-extrabold text-blue-700 uppercase tracking-wider">Total Sales</p>
-            <h3 className="text-2xl font-black text-blue-900">₹{totalSalesAllBills.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-blue-600 font-medium">{enrichedSales.length} bills in period</p>
-          </div>
+        <div className="space-y-4 mb-8">
+          {totalCostUnavailableCount > 0 && (
+            <div className="p-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl text-xs font-semibold flex items-center gap-2">
+              <span>⚠️</span>
+              <span>Warning: {totalCostUnavailableCount} bill(s) in this period have missing sale-time cost records (cost_price_at_sale is NULL). Profit metrics are calculated only where reliable historical cost records exist.</span>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="bg-blue-50/50 border border-blue-200 p-5 rounded-3xl shadow-xs space-y-1">
+              <p className="text-[11px] font-extrabold text-blue-700 uppercase tracking-wider">Total Sales</p>
+              <h3 className="text-2xl font-black text-blue-900">₹{totalSalesAllBills.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-blue-600 font-medium">{enrichedSales.length} bills in period</p>
+            </div>
 
-          <div className="bg-orange-50/50 border border-orange-200 p-5 rounded-3xl shadow-xs space-y-1">
-            <p className="text-[11px] font-extrabold text-orange-700 uppercase tracking-wider">Purchase Cost</p>
-            <h3 className="text-2xl font-black text-orange-900">₹{totalPurchaseAllBills.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-orange-600 font-medium">Cost of goods sold</p>
-          </div>
+            <div className="bg-orange-50/50 border border-orange-200 p-5 rounded-3xl shadow-xs space-y-1">
+              <p className="text-[11px] font-extrabold text-orange-700 uppercase tracking-wider">Purchase Cost (COGS)</p>
+              <h3 className="text-2xl font-black text-orange-900">₹{totalPurchaseAllBills.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-orange-600 font-medium">Cost of goods sold</p>
+            </div>
 
-          <div className="bg-emerald-50/50 border border-emerald-200 p-5 rounded-3xl shadow-xs space-y-1">
-            <p className="text-[11px] font-extrabold text-emerald-700 uppercase tracking-wider">Gross Profit</p>
-            <h3 className="text-2xl font-black text-emerald-900">₹{totalProfitAllBills.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <p className="text-[10px] text-emerald-600 font-medium">Sales − Purchase Cost</p>
+            <div className="bg-emerald-50/50 border border-emerald-200 p-5 rounded-3xl shadow-xs space-y-1">
+              <p className="text-[11px] font-extrabold text-emerald-700 uppercase tracking-wider">Gross Profit</p>
+              <h3 className="text-2xl font-black text-emerald-900">₹{totalProfitAllBills.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-emerald-600 font-medium">Sales − COGS</p>
+            </div>
+
+            <div className="bg-rose-50/50 border border-rose-200 p-5 rounded-3xl shadow-xs space-y-1">
+              <p className="text-[11px] font-extrabold text-rose-700 uppercase tracking-wider">Operating Expenses</p>
+              <h3 className="text-2xl font-black text-rose-900">₹{totalOperatingExpenses.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-rose-600 font-medium">{expenses.length} expense entry(ies)</p>
+            </div>
+
+            <div className="bg-indigo-50/50 border border-indigo-200 p-5 rounded-3xl shadow-xs space-y-1">
+              <p className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-wider">Net Profit</p>
+              <h3 className="text-2xl font-black text-indigo-900">₹{netProfitAllBills.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <p className="text-[10px] text-indigo-600 font-medium">Gross Profit − Operating Expenses</p>
+            </div>
           </div>
         </div>
       )}

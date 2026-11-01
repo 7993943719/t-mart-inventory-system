@@ -37,16 +37,30 @@ export default async function DashboardPage() {
     .select("*, businesses(*)")
     .eq("user_id", user.id);
 
-  if (memberError || !memberships || memberships.length === 0) {
+  let membership = memberships?.[0];
+  let business = membership?.businesses;
+
+  if (!business) {
+    const { data: ownedBiz } = await supabase
+      .from("businesses")
+      .select("*")
+      .eq("owner_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (ownedBiz) {
+      business = ownedBiz;
+      membership = { role: "Owner", business_id: ownedBiz.id, businesses: ownedBiz, user_id: user.id };
+    }
+  }
+
+  if (!business) {
     redirect("/create-business");
   }
 
-  if (memberships.length > 1) {
+  if (memberships && memberships.length > 1) {
     redirect("/select-business");
   }
-
-  const membership = memberships[0];
-  const business = membership.businesses;
 
   const { data: profile } = await supabase
     .from("profiles")
